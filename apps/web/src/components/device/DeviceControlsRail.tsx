@@ -118,7 +118,7 @@ export function DeviceControlsRail(props: {
               </Menu>
             ) : null}
           </>
-        ) : props.hostKind === "simlock" ? null : (
+        ) : props.hostKind === "simlock" || props.hostKind === "revyl" ? null : (
           <RailButton
             tooltipSide={popupSide}
             label="Rotate device"
@@ -229,7 +229,11 @@ export function DeviceControlsRail(props: {
             <MenuSeparator />
             <MenuItem variant="destructive" onClick={props.onPowerOff}>
               <Power />
-              {props.hostKind === "simlock" ? "Return device to the pool" : "Power off device"}
+              {props.hostKind === "simlock"
+                ? "Return device to the pool"
+                : props.hostKind === "revyl"
+                  ? "End Revyl session"
+                  : "Power off device"}
             </MenuItem>
           </MenuPopup>
         </Menu>

@@ -162,6 +162,34 @@ for a lease only from the folder it was opened from, which `device_open`
 names. A device cannot reach development servers on your machine through
 localhost; use an address its worker can reach.
 
+## Revyl hosts (alpha)
+
+[Revyl](https://revyl.ai) runs iOS simulators and Android emulators in the
+cloud. T3 starts them through agent-device's Revyl plugin, which it installs
+itself, and streams them to the Device panel over WebRTC. The integration is an
+alpha and may change.
+
+Turn on **Settings → Labs → Revyl device hosts (alpha)** and **Use devices** in
+Settings → Devices, then choose **Add source → Revyl (alpha)**. Give it a Revyl
+API key, or leave the key empty to use `REVYL_API_KEY` from the environment's
+server. Revyl installs an app on every new device, so set an **iOS app URL** (a
+zipped simulator `.app`) and an **Android app URL** (an `.apk`); a platform
+without one is not offered. Both must be HTTPS URLs Revyl can download.
+
+Sessions bill your Revyl organization from the moment they start, so each host
+caps **Sessions at once** and ends every session after its **Session minutes**.
+Closing a device with **End Revyl session**, removing the host, or stopping
+device support ends its sessions. If the server stops without ending them,
+each one ends at its session limit, and the host stops any it left behind the
+next time it starts.
+
+The panel shows the device's screen live. You can tap, long-press, and swipe,
+and press Home, and Back on Android. Rotation and typing on your keyboard are
+not offered yet. Agents drive the same session through `device_open`. A cloud
+device cannot reach development servers on your machine through localhost; use
+an address it can reach. To point T3 at another Revyl API, set
+`REVYL_API_URL` to its HTTPS origin on the environment's server.
+
 ## Device tool updates
 
 The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. In Settings → Devices, select a version and choose **Check versions** to read installed versions without installing tools or starting devices.

@@ -25,6 +25,7 @@ import {
   type DeviceSimlockIdentityInput,
   type DeviceHostConfig,
   type EasDeviceHostConfig,
+  type RevylDeviceHostConfig,
   type SimlockDeviceHostConfig,
   type SshDeviceHostConfig,
   type DeviceHostSummary,
@@ -78,6 +79,7 @@ import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
 import * as DeviceHost from "./DeviceHost.ts";
 import * as SshDeviceHost from "./SshDeviceHost.ts";
 import * as EasDeviceHost from "./EasDeviceHost.ts";
+import * as RevylDeviceHost from "./RevylDeviceHost.ts";
 import * as SimlockDeviceHost from "./SimlockDeviceHost.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { makeExpoApi } from "./ExpoApi.ts";
@@ -316,6 +318,7 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
       supportsToolInspection: true,
       supportsEasHosts: true,
       supportsSimlockHosts: true,
+      supportsRevylHosts: true,
       hosts: initialHosts,
       hostStatus: initialSettings.enabled ? "idle" : "disabled",
       hostStatuses: {},
@@ -779,7 +782,7 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
         return yield* new DeviceNotFoundError({ hostId: host.id, deviceId: input.deviceId });
       }
       // Hosts that route their own streams never encode emulator video with serve-emu's ffmpeg.
-      if (device.platform === "android" && !device.physical && !ready.upstream) {
+      if (device.platform === "android" && !device.physical && !ready.upstream && !ready.serve) {
         // Resolve the override on the device host the way its hub does.
         const encoders = yield* ready.run(ready.nodePath, [
           "-e",
@@ -1435,7 +1438,9 @@ export const make = Effect.gen(function* () {
     yield* Effect.context<Effect.Services<ReturnType<typeof EasDeviceHost.make>>>();
   const simlockContext =
     yield* Effect.context<Effect.Services<ReturnType<typeof SimlockDeviceHost.make>>>();
-  const simlockAgentCli = Effect.fn("DeviceService.simlockAgentCli")(
+  const revylContext =
+    yield* Effect.context<Effect.Services<ReturnType<typeof RevylDeviceHost.make>>>();
+  const agentDeviceCli = Effect.fn("DeviceService.agentDeviceCli")(
     function* (hostId: string) {
       const nodePath = yield* resolveNodeExecutable("Device automation");
       const tool = yield* ensureAgentDevice(config.baseDir).pipe(
@@ -1496,7 +1501,7 @@ export const make = Effect.gen(function* () {
           const hostScope = yield* Scope.fork(scope);
           if (host.kind === "simlock") {
             // Closing this scope releases the host's leases back to the pool.
-            const instance = yield* SimlockDeviceHost.make(host, simlockAgentCli(host.id)).pipe(
+            const instance = yield* SimlockDeviceHost.make(host, agentDeviceCli(host.id)).pipe(
               Effect.provideService(Scope.Scope, hostScope),
               Effect.provide(simlockContext),
             );
@@ -1510,6 +1515,17 @@ export const make = Effect.gen(function* () {
                   Effect.andThen(service.withLifecycleLock(service.refreshHosts)),
                   Effect.forkIn(hostScope),
                 );
+            continue;
+          }
+          if (host.kind === "revyl") {
+            // Closing this scope ends the host's Revyl sessions, so a changed key or limit never
+            // leaves a billed session behind.
+            const instance = yield* RevylDeviceHost.make(host, agentDeviceCli(host.id)).pipe(
+              Effect.provideService(Scope.Scope, hostScope),
+              Effect.provide(revylContext),
+            );
+            hosts.set(host.id, instance);
+            configured.set(host.id, { config: host, scope: hostScope });
             continue;
           }
           if (host.kind === "eas") {
@@ -1559,11 +1575,14 @@ export const make = Effect.gen(function* () {
     readonly easDeviceHosts: ReadonlyArray<EasDeviceHostConfig>;
     readonly simlockDeviceHosts: ReadonlyArray<SimlockDeviceHostConfig>;
     readonly simlockDeviceHostsEnabled: boolean;
+    readonly revylDeviceHosts: ReadonlyArray<RevylDeviceHostConfig>;
+    readonly revylDeviceHostsEnabled: boolean;
   }): ReadonlyArray<DeviceHostConfig> => {
     const hosts: Array<DeviceHostConfig> = [...value.deviceHosts];
     for (const host of [
       ...value.easDeviceHosts,
       ...(value.simlockDeviceHostsEnabled ? value.simlockDeviceHosts : []),
+      ...(value.revylDeviceHostsEnabled ? value.revylDeviceHosts : []),
     ]) {
       if (!hosts.some((existing) => existing.id === host.id)) hosts.push(host);
     }

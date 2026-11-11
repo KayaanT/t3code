@@ -97,7 +97,43 @@ export const SimlockDeviceHostConfig = Schema.Struct({
 });
 export type SimlockDeviceHostConfig = typeof SimlockDeviceHostConfig.Type;
 
-export type DeviceHostConfig = SshDeviceHostConfig | EasDeviceHostConfig | SimlockDeviceHostConfig;
+const RevylAppUrl = TrimmedNonEmptyString.check(Schema.isPattern(/^https:\/\/\S+$/));
+
+/**
+ * Alpha: cloud iOS simulators and Android emulators from Revyl (https://revyl.ai), started through
+ * agent-device's Revyl plugin. Sessions bill the Revyl organization until they stop, so every one
+ * is bounded.
+ */
+export const RevylDeviceHostConfig = Schema.Struct({
+  kind: Schema.Literal("revyl"),
+  id: ConfiguredDeviceHostId,
+  label: TrimmedNonEmptyString,
+  /**
+   * Revyl API key, kept in the secret store, or the secret provider to read it from. When empty
+   * the server uses REVYL_API_KEY.
+   */
+  apiKey: SettingsSecretValue.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed("")),
+    Schema.annotateKey({ settingsSecret: true, title: "API key" }),
+  ),
+  maxSessions: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10 })).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(2)),
+  ),
+  /** A session the Device panel opened ends this long after it started. */
+  maxSessionMinutes: Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 120 })).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(30)),
+  ),
+  /** The app a new session installs; the Revyl plugin requires one per platform. */
+  iosAppUrl: Schema.optional(RevylAppUrl),
+  androidAppUrl: Schema.optional(RevylAppUrl),
+});
+export type RevylDeviceHostConfig = typeof RevylDeviceHostConfig.Type;
+
+export type DeviceHostConfig =
+  | SshDeviceHostConfig
+  | EasDeviceHostConfig
+  | SimlockDeviceHostConfig
+  | RevylDeviceHostConfig;
 
 const uniqueHostIds = Schema.makeFilter(
   (hosts: ReadonlyArray<{ readonly id: string }>) =>
@@ -116,6 +152,9 @@ export const EasDeviceHostConfigs = Schema.Array(EasDeviceHostConfig).check(uniq
 
 /** Kept apart from the other host lists for the same reason as EAS hosts. */
 export const SimlockDeviceHostConfigs = Schema.Array(SimlockDeviceHostConfig).check(uniqueHostIds);
+
+/** Kept apart from the other host lists for the same reason as EAS hosts. */
+export const RevylDeviceHostConfigs = Schema.Array(RevylDeviceHostConfig).check(uniqueHostIds);
 
 export const DeviceEasAccountInput = Schema.Struct({
   /** A saved EAS host whose stored token is checked when no new token is given. */
@@ -224,10 +263,15 @@ const SimlockDeviceHostSummary = Schema.Struct({
   ...deviceHostSummaryFields,
   kind: Schema.Literal("simlock"),
 });
+const RevylDeviceHostSummary = Schema.Struct({
+  ...deviceHostSummaryFields,
+  kind: Schema.Literal("revyl"),
+});
 export const DeviceHostSummary = Schema.Union([
   MachineDeviceHostSummary,
   EasDeviceHostSummary,
   SimlockDeviceHostSummary,
+  RevylDeviceHostSummary,
 ]);
 export type DeviceHostSummary = typeof DeviceHostSummary.Type;
 
@@ -268,6 +312,8 @@ const deviceServiceStateFields = {
   supportsEasHosts: Schema.optional(Schema.Boolean),
   /** Servers from before Simlock hosts ignore `simlockDeviceHosts`. */
   supportsSimlockHosts: Schema.optional(Schema.Boolean),
+  /** Servers from before Revyl hosts ignore `revylDeviceHosts`. */
+  supportsRevylHosts: Schema.optional(Schema.Boolean),
   hostStatus: DeviceHostStatus,
   hostStatusDetail: Schema.optional(Schema.String),
   hostStatuses: DeviceHostStatuses,
@@ -292,6 +338,7 @@ const DeviceServiceStateWire = Schema.Struct({
   hosts: Schema.Array(MachineDeviceHostSummary),
   easHosts: Schema.optional(Schema.Array(EasDeviceHostSummary)),
   simlockHosts: Schema.optional(Schema.Array(SimlockDeviceHostSummary)),
+  revylHosts: Schema.optional(Schema.Array(RevylDeviceHostSummary)),
 });
 const DeviceServiceStateDecoded = Schema.Struct({
   ...deviceServiceStateFields,
@@ -305,9 +352,14 @@ export const DeviceServiceState = DeviceServiceStateWire.pipe(
       typeof DeviceServiceStateDecoded.Type,
       typeof DeviceServiceStateWire.Type
     >({
-      decode: ({ easHosts, simlockHosts, ...state }) => ({
+      decode: ({ easHosts, simlockHosts, revylHosts, ...state }) => ({
         ...state,
-        hosts: [...state.hosts, ...(easHosts ?? []), ...(simlockHosts ?? [])],
+        hosts: [
+          ...state.hosts,
+          ...(easHosts ?? []),
+          ...(simlockHosts ?? []),
+          ...(revylHosts ?? []),
+        ],
       }),
       encode: (state) => ({
         ...state,
@@ -320,6 +372,9 @@ export const DeviceServiceState = DeviceServiceStateWire.pipe(
         ),
         simlockHosts: state.hosts.filter(
           (host): host is typeof SimlockDeviceHostSummary.Type => host.kind === "simlock",
+        ),
+        revylHosts: state.hosts.filter(
+          (host): host is typeof RevylDeviceHostSummary.Type => host.kind === "revyl",
         ),
       }),
     }),

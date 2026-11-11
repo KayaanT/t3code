@@ -521,6 +521,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta alpha simlock callstack simulator emulator ios android pool lease gateway"],
   },
   {
+    id: "revyl-hosts",
+    title: "Revyl device hosts (alpha)",
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: ["beta alpha revyl cloud simulator emulator ios android session"],
+  },
+  {
     id: "worktree-fast-checkout",
     title: "Fast worktree checkout",
     to: "/settings/labs",
@@ -999,7 +1006,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Device sources",
     to: "/settings/devices",
     searchTerms: [
-      "device hosts ssh remote mac mini identity key connection eas expo cloud simlock pool gateway local simulators",
+      "device hosts ssh remote mac mini identity key connection eas expo cloud simlock pool gateway revyl local simulators",
     ],
   },
   {

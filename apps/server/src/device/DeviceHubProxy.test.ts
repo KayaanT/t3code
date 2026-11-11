@@ -8,7 +8,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { HttpClient, HttpClientResponse, HttpRouter } from "effect/http";
+import { HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse } from "effect/http";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import type * as DeviceHost from "./DeviceHost.ts";
 import * as DeviceService from "./DeviceService.ts";
@@ -24,6 +24,7 @@ const fixture = (
   fail = false,
   authError?: EnvironmentAuth.ServerAuthCredentialError | EnvironmentAuth.ServerAuthInternalError,
   upstream?: DeviceHost.DeviceHostReady["upstream"],
+  serve?: DeviceHost.DeviceHostReady["serve"],
 ) => {
   let finalized = 0;
   const requests: string[] = [];
@@ -77,6 +78,7 @@ const fixture = (
               run: () => unexpectedOperation,
               helpers: { serveSimAxSettings: null, serveSimCli: null },
               ...(upstream ? { upstream } : {}),
+              ...(serve ? { serve } : {}),
             }),
           screenshot: (input) =>
             Effect.sync(() => {
@@ -255,6 +257,33 @@ describe("device hub proxy", () => {
     );
     expect(unrouted.status).toBe(404);
     expect(requests).toHaveLength(1);
+  });
+
+  it("lets a host answer allowed hub requests itself, without the ticket or host id", async () => {
+    const served: Array<string> = [];
+    const { handler, requests } = fixture(
+      [AuthOrchestrationReadScope],
+      false,
+      undefined,
+      undefined,
+      (_request, hubPath, search) =>
+        Effect.sync(() => {
+          served.push(hubPath + "?" + search.toString());
+          return HttpServerResponse.jsonUnsafe({ answered: true });
+        }),
+    );
+    const answered = await handler(
+      new Request(
+        "http://t3.test/api/device-hub/vendor/serve-sim/api?device=run-1&hostId=revyl&wsTicket=secret",
+      ),
+    );
+    expect(await answered.json()).toEqual({ answered: true });
+    const shell = await handler(
+      new Request("http://t3.test/api/device-hub/vendor/serve-sim/exec", { method: "POST" }),
+    );
+    expect(shell.status).toBe(404);
+    expect(served).toEqual(["/vendor/serve-sim/api?device=run-1"]);
+    expect(requests).toEqual([]);
   });
 
   it("never forwards the vendor shell endpoint", async () => {

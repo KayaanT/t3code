@@ -3,6 +3,7 @@ import {
   CloudSpeechProvider,
   EasDeviceHostConfig,
   isSecretReference,
+  RevylDeviceHostConfig,
   secretReferencesInSettings,
   type ServerSettings,
   SimlockDeviceHostConfig,
@@ -22,6 +23,7 @@ type SecretUseSettings = Pick<
   | "textGenerators"
   | "easDeviceHosts"
   | "simlockDeviceHosts"
+  | "revylDeviceHosts"
   | "cloudSpeechCredentials"
 >;
 
@@ -106,6 +108,9 @@ export function secretProviderUses(
     ),
     ...settings.simlockDeviceHosts.flatMap((host) =>
       uses({ settingsSchema: SimlockDeviceHostConfig }, `simlock:${host.id}`, host.label, host),
+    ),
+    ...settings.revylDeviceHosts.flatMap((host) =>
+      uses({ settingsSchema: RevylDeviceHostConfig }, `revyl:${host.id}`, host.label, host),
     ),
     ...CloudSpeechProvider.literals.flatMap((provider) => {
       const credential = settings.cloudSpeechCredentials[provider];

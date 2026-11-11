@@ -105,11 +105,12 @@ const collectUsageLimitSecretReferences = (
   );
 
 const collectDeviceHostSecretReferences = (
-  settings: Pick<ServerSettings, "easDeviceHosts" | "simlockDeviceHosts">,
+  settings: Pick<ServerSettings, "easDeviceHosts" | "simlockDeviceHosts" | "revylDeviceHosts">,
 ): ReadonlyArray<SecretReference> =>
   [
     ...settings.easDeviceHosts.map(({ accessToken }) => accessToken),
     ...settings.simlockDeviceHosts.map(({ agentToken }) => agentToken),
+    ...settings.revylDeviceHosts.map(({ apiKey }) => apiKey),
   ].filter(isSecretReference);
 
 /** Settings that cannot be read clear every cached secret, so a refresh never keeps a stale one. */
@@ -123,6 +124,7 @@ export const invalidateSettingsSecrets = Effect.fn("SettingsSecrets.invalidate")
       | "textGenerators"
       | "easDeviceHosts"
       | "simlockDeviceHosts"
+      | "revylDeviceHosts"
       | "cloudSpeechCredentials"
     >,
     E

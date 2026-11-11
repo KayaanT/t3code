@@ -33,6 +33,7 @@ export function agentDeviceQuickStart(
   command = "agent-device",
   host?:
     | { readonly kind: "eas" }
+    | { readonly kind: "revyl" }
     | { readonly kind: "simlock"; readonly installDirectory?: string },
 ): string {
   const executable = shellWord(command);
@@ -50,9 +51,11 @@ export function agentDeviceQuickStart(
           .join(" ")
       : host?.kind === "eas"
         ? "This is an EAS Simulator session in the cloud. It bills the Expo account per minute until it stops, so call device_close with shutdown: true when you are done. It starts with no apps installed: install-from-source <url> installs a build from a URL (iOS needs a .tar.gz containing a .app), and install uploads one from this machine."
-        : device.platform === "ios"
-          ? "First use builds an XCTest runner and can take a couple of minutes; later commands are fast."
-          : "The Android snapshot helper installs itself on first use.";
+        : host?.kind === "revyl"
+          ? "This is a Revyl cloud device (alpha in T3 Code). It bills the Revyl organization until it stops and ends on its own at the host's session limit, so call device_close with shutdown: true when you are done. It starts with the host's configured app installed."
+          : device.platform === "ios"
+            ? "First use builds an XCTest runner and can take a couple of minutes; later commands are fast."
+            : "The Android snapshot helper installs itself on first use.";
   return [
     `The user is watching ${device.name} (${device.version}) in the Device panel.`,
     target === ""
@@ -310,8 +313,8 @@ const handlers = {
                 kind: "simlock",
                 ...(agent.installDirectory ? { installDirectory: agent.installDirectory } : {}),
               }
-            : hostKind === "eas"
-              ? { kind: "eas" }
+            : hostKind === "eas" || hostKind === "revyl"
+              ? { kind: hostKind }
               : undefined,
         ),
       };

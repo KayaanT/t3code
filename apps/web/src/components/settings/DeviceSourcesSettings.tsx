@@ -10,6 +10,7 @@ import {
   type DeviceServiceState,
   type EasDeviceHostConfig,
   type EnvironmentId,
+  type RevylDeviceHostConfig,
   type ServerSettingsPatch,
   type SimlockDeviceHostConfig,
   type SshDeviceHostConfig,
@@ -37,6 +38,12 @@ import {
   newEasDeviceHost,
   updateEasDeviceHosts,
 } from "./easDeviceHostsSettings.logic";
+import { RevylDeviceHostEditor } from "./RevylDeviceHostEditor";
+import {
+  newRevylDeviceHost,
+  revylSessionLimits,
+  updateRevylDeviceHosts,
+} from "./revylDeviceHostsSettings.logic";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { SettingsSection } from "./settingsLayout";
 import { settingsScopeEnvironmentLabel } from "./settingsScopeAxis";
@@ -106,7 +113,14 @@ type Editing =
       /** Where the editor checks the Expo account: an environment that holds the host. */
       readonly environmentId: EnvironmentId;
     }
-  | { readonly kind: "simlock"; readonly host: SimlockDeviceHostConfig; readonly isNew: boolean };
+  | { readonly kind: "simlock"; readonly host: SimlockDeviceHostConfig; readonly isNew: boolean }
+  | {
+      readonly kind: "revyl";
+      readonly host: RevylDeviceHostConfig;
+      readonly isNew: boolean;
+      /** Whose secret providers the key field offers: an environment that holds the host. */
+      readonly environmentId: EnvironmentId;
+    };
 
 /** What a configured host is doing on one environment, when it is not simply working. */
 function hostStatus(
@@ -142,6 +156,7 @@ const hostPlatforms = (state: DeviceServiceState | undefined, hostId: string) =>
 export function DeviceSourcesSettings(props: {
   readonly supportsEas: boolean;
   readonly supportsSimlock: boolean;
+  readonly supportsRevyl: boolean;
 }) {
   const { scope, environments, connectedEnvironments, environment: primary } = useSettingsScope();
   const projectScope = scope.kind === "project" || scope.kind === "checkout";
@@ -171,6 +186,8 @@ export function DeviceSourcesSettings(props: {
   // Environments with devices off are left out: the switch above already says so.
   const active = members.filter((member) => member.settings?.enableDeviceSupport);
   const simlockEnabled = members.some((member) => member.settings?.simlockDeviceHostsEnabled);
+  const revylEnabled =
+    props.supportsRevyl && members.some((member) => member.settings?.revylDeviceHostsEnabled);
   // Like every scoped setting, a change reaches the connected environments and skips the rest.
   const disabled = projectScope || busy || members.length === 0;
 
@@ -263,6 +280,29 @@ export function DeviceSourcesSettings(props: {
         },
       })),
       remove ? "EAS host not removed everywhere" : "EAS host not saved everywhere",
+    );
+    if (saved) setEditing(null);
+  };
+
+  const saveRevyl = async (
+    host: RevylDeviceHostConfig,
+    remove: boolean,
+    previous?: RevylDeviceHostConfig,
+  ) => {
+    const keepKey = previous !== undefined && host.apiKey === previous.apiKey;
+    const saved = await write(
+      members.map((member) => ({
+        environmentId: member.environmentId,
+        patch: {
+          revylDeviceHosts: updateRevylDeviceHosts(
+            member.settings?.revylDeviceHosts ?? [],
+            host,
+            remove,
+            keepKey,
+          ),
+        },
+      })),
+      remove ? "Revyl host not removed everywhere" : "Revyl host not saved everywhere",
     );
     if (saved) setEditing(null);
   };
@@ -519,6 +559,48 @@ export function DeviceSourcesSettings(props: {
     }
   }
 
+  if (revylEnabled) {
+    const revylHosts = new Map<string, RevylDeviceHostConfig>();
+    for (const member of members)
+      for (const host of member.settings?.revylDeviceHosts ?? [])
+        if (!revylHosts.has(host.id)) revylHosts.set(host.id, host);
+    for (const host of revylHosts.values()) {
+      const holders = members.filter((member) =>
+        (member.settings?.revylDeviceHosts ?? []).some((candidate) => candidate.id === host.id),
+      );
+      const [firstHolder] = holders;
+      if (!firstHolder) continue;
+      const editOn = (
+        holders.find((member) => member.environmentId === primary?.environmentId) ?? firstHolder
+      ).environmentId;
+      rows.push({
+        key: `revyl:${host.id}`,
+        shared: true,
+        title: host.label,
+        kind: "Revyl",
+        description: revylSessionLimits(host),
+        environments: active.map((member) => {
+          const added = holders.some((holder) => holder.environmentId === member.environmentId);
+          return {
+            environmentId: member.environmentId,
+            label: member.label,
+            added,
+            ...(added
+              ? {
+                  status: hostStatus(member.state, host.id),
+                  platforms: hostPlatforms(member.state, host.id),
+                }
+              : {}),
+          };
+        }),
+        actions: rowActions(
+          () => setEditing({ kind: "revyl", host, isNew: false, environmentId: editOn }),
+          () => void saveRevyl(host, true),
+        ),
+      });
+    }
+  }
+
   const addMenu = (
     <Menu>
       <MenuTrigger
@@ -563,6 +645,21 @@ export function DeviceSourcesSettings(props: {
             Simlock pool (alpha)
           </MenuItem>
         ) : null}
+        {revylEnabled ? (
+          <MenuItem
+            onClick={() =>
+              primary &&
+              setEditing({
+                kind: "revyl",
+                host: newRevylDeviceHost(randomUUID()),
+                isNew: true,
+                environmentId: primary.environmentId,
+              })
+            }
+          >
+            Revyl (alpha)
+          </MenuItem>
+        ) : null}
       </MenuPopup>
     </Menu>
   );
@@ -600,6 +697,16 @@ export function DeviceSourcesSettings(props: {
           environments={simlockEnvironments}
           busy={busy}
           onSave={(host, tokens) => void saveSimlock(host, tokens)}
+          onClose={() => setEditing(null)}
+        />
+      ) : editing?.kind === "revyl" ? (
+        <RevylDeviceHostEditor
+          key={editing.host.id}
+          environmentId={editing.environmentId}
+          host={editing.host}
+          isNew={editing.isNew}
+          busy={busy}
+          onSave={(host) => void saveRevyl(host, false, editing.isNew ? undefined : editing.host)}
           onClose={() => setEditing(null)}
         />
       ) : null}

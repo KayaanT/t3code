@@ -33,7 +33,7 @@ export function DeviceWorkspace(props: {
   // A capture always finishes, even if the panel hides or closes meanwhile; the user asked for it.
   const capturing = useRef(false);
   const access = useDeviceHubAccess(props.environmentId, props.device.hostId);
-  // Settings and tools run commands on the device's own machine, which EAS and Simlock do not expose.
+  // Settings and tools run commands on the device's own machine, which cloud hosts do not expose.
   const runsHostCommands = props.hostKind === "local" || props.hostKind === "ssh";
   const controls = useDeviceControls({
     ...props,
@@ -90,7 +90,7 @@ export function DeviceWorkspace(props: {
             deviceId={props.device.id}
             hostId={props.device.hostId}
             visible={props.visible}
-            serveSimOnly={props.hostKind === "simlock"}
+            serveSimOnly={props.hostKind === "simlock" || props.hostKind === "revyl"}
             axOverlay={axOverlay}
             allowPhoneView
             renderControls={(view) => (

@@ -40,6 +40,9 @@ const settings = Schema.decodeSync(ServerSettings)({
       agentToken: personal("op://simlock"),
     },
   ],
+  revylDeviceHosts: [
+    { kind: "revyl", id: "revyl", label: "Revyl", apiKey: personal("op://revyl") },
+  ],
   cloudSpeechCredentials: { openai: personal("op://voice"), xai: "" },
 });
 
@@ -53,6 +56,7 @@ it.each([
       "https://hub.test · Management Key",
       "EAS Simulator · Access Token",
       "Simlock Pool · Agent Token",
+      "Revyl · API key",
       "Voice · OpenAI",
     ],
   ],

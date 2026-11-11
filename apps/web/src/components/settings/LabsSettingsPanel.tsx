@@ -24,6 +24,7 @@ export function LabsSettingsPanel() {
         <LinkedEnvironmentsRow />
         <PromptSuggestionsRow />
         <SimlockHostsRow />
+        <RevylHostsRow />
         <FastWorktreeCheckoutRow />
       </SettingsSection>
     </SettingsPageContainer>
@@ -224,6 +225,46 @@ function SimlockHostsRow() {
             updateSettings({ simlockDeviceHostsEnabled: Boolean(checked) })
           }
           aria-label="Simlock device hosts"
+        />
+      }
+    />
+  );
+}
+
+function RevylHostsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      serverScoped
+      {...searchableSetting("revyl-hosts")}
+      settingKeys={["revylDeviceHostsEnabled"]}
+      description={
+        <>
+          Let the Device panel open cloud iOS simulators and Android emulators from{" "}
+          <a
+            href="https://revyl.ai"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2"
+          >
+            Revyl
+          </a>
+          , added in{" "}
+          <Link to="/settings/devices" className="underline underline-offset-2">
+            Devices
+          </Link>
+          . Sessions bill your Revyl organization. An alpha that may change or break.
+        </>
+      }
+      control={
+        <ScopedSwitch
+          settingKeys={["revylDeviceHostsEnabled"]}
+          checked={settings.revylDeviceHostsEnabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ revylDeviceHostsEnabled: Boolean(checked) })
+          }
+          aria-label="Revyl device hosts"
         />
       }
     />

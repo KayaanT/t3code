@@ -11,6 +11,7 @@ import type {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type { HttpServerRequest, HttpServerResponse } from "effect/http";
 import type { NodeRuntimeUnavailableError } from "@t3tools/shared/nodeRuntime";
 
 export class DeviceHostError extends Schema.TaggedError<DeviceHostError>()("DeviceHostError", {
@@ -178,6 +179,15 @@ export interface DeviceHostReady {
     hubPath: string,
     search: URLSearchParams,
   ) => Effect.Effect<HubUpstream | null>;
+  /**
+   * Answers every proxied hub request itself, for hosts whose devices speak no hub protocol and
+   * are translated to serve-sim's. Requests reach it authorized, without the auth ticket or host id.
+   */
+  readonly serve?: (
+    request: HttpServerRequest.HttpServerRequest,
+    hubPath: string,
+    search: URLSearchParams,
+  ) => Effect.Effect<HttpServerResponse.HttpServerResponse>;
 }
 
 export interface DeviceHostAgentReady extends DeviceHostReady {
