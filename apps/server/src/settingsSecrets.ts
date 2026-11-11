@@ -5,6 +5,7 @@ import {
   CodexSettings,
   EasDeviceHostConfig,
   type ProviderInstanceConfig,
+  RevylDeviceHostConfig,
   type ServerSettings,
   type SettingsSecretValue,
   SimlockDeviceHostConfig,
@@ -51,6 +52,7 @@ const textGeneratorSecretFields = secretSettingsFields(TextGeneratorConfig);
 const voiceSecretFields = secretSettingsFields(CloudSpeechCredentials);
 const easDeviceHostSecretFields = secretSettingsFields(EasDeviceHostConfig);
 const simlockDeviceHostSecretFields = secretSettingsFields(SimlockDeviceHostConfig);
+const revylDeviceHostSecretFields = secretSettingsFields(RevylDeviceHostConfig);
 const encode = (value: string) => Buffer.from(value, "utf8").toString("base64url");
 
 export interface SettingsSecret {
@@ -247,6 +249,17 @@ function mapSecretFieldGroups(
       ) as SimlockDeviceHostConfig,
   );
 
+  const revylDeviceHosts = settings.revylDeviceHosts.map(
+    (host) =>
+      mapFields(
+        host,
+        revylDeviceHostSecretFields,
+        (field, serverHost) =>
+          `revyl-device-host-${encode(host.id)}-${encode(field)}` +
+          (serverHost === null ? "" : `-${encode(serverHost)}`),
+      ) as RevylDeviceHostConfig,
+  );
+
   return {
     ...settings,
     cloudSpeechCredentials: mapFields(
@@ -260,6 +273,7 @@ function mapSecretFieldGroups(
     textGenerators,
     easDeviceHosts,
     simlockDeviceHosts,
+    revylDeviceHosts,
   };
 }
 
