@@ -11904,7 +11904,6 @@
   "f2b07faba1229ce7": "Intervalle de vérification de l’état",
   "5c9dc9970db79fe2": "actualiser disponibilité versions état d’authentification modèles sondes en arrière-plan secondes désactivé",
   "056ba6a180d114b5": "autoriser désactiver activer ouvrir piloter aperçu outils sessions remplacement par projet",
-  "345075be6cacc171": "appareil hôtes ssh distant mac mini identité clé connexion eas expo cloud simlock pool passerelle simulateurs locaux",
   "a6b742430b05d6cc": "Les agents peuvent utiliser les appareils",
   "1d5d7418a83575c2": "autoriser simulateur émulateur ios android piloter outils sessions",
   "60f0825756e404dc": "Utiliser les appareils",
@@ -12492,5 +12491,44 @@
   "27d76249d09eb69f": "Guide de revue prêt",
   "faa3bb26abb39c93": "Échec du guide de revue",
   "b7df38b7d8792d78": "Ouvrir le guide",
-  "9e91e9a77b664e4e": "Impossible de démarrer un guide de revue"
+  "9e91e9a77b664e4e": "Impossible de démarrer un guide de revue",
+  "5819e603828deb17": "Terminer la session Revyl",
+  "a3a5829cd79cce59": "Hôte Revyl non supprimé partout",
+  "701c809f3a86a23f": "Hôte Revyl non enregistré partout",
+  "6cd0515129b5448a": "Revyl (alpha)",
+  "f48225ae694f2801": "Hôtes d’appareils Revyl",
+  "67cd441c3345c6eb": [
+    "Permet au panneau Appareils d’ouvrir des simulateurs iOS et des émulateurs Android dans le cloud de",
+    " ",
+    {
+      "t": "a",
+      "i": 1,
+      "c": "Revyl"
+    },
+    ", ajoutés dans",
+    " ",
+    {
+      "t": "Link",
+      "i": 2,
+      "c": "Appareils"
+    },
+    ". Les sessions sont facturées à votre organisation Revyl. Une version alpha qui peut changer ou casser."
+  ],
+  "a9e2f81b0f3fd13f": "Donnez un nom à l’hôte, des URL d’app HTTPS et des limites dans les plages indiquées.",
+  "8e3a32b457279d83": "Ajouter un hôte Revyl",
+  "1bb1d930e4e1d07b": "Modifier l’hôte Revyl",
+  "b705f347c51bde5e": "Clé d’API Revyl",
+  "59967fff391f11d8": "Effacer la clé d’API",
+  "74662f3d289e5e66": "URL de l’app iOS",
+  "6d7a7901e72ce1ca": "URL de l’app Android",
+  "2e768da46ef1c850": "Les sessions sont facturées à l’organisation Revyl jusqu’à leur arrêt, donc chacune se termine après les minutes de session même si elle est encore ouverte.",
+  "15d1efd64e706a5a": "Les sessions sont facturées à l’organisation Revyl jusqu’à leur arrêt, donc chacune se termine après les minutes de session même si elle est encore ouverte. Enregistrer redémarre cet hôte, ce qui arrête ses sessions en cours.",
+  "ba01857a23971184": "Le serveur de l’environnement démarre des simulateurs et émulateurs cloud sur Revyl avec cette clé. Sans clé ici, il utilise REVYL_API_KEY.",
+  "9eb3dc4c26c74cd9": "Clé d’API Revyl",
+  "f9a717254a4b65fa": "Revyl installe l’app sur chaque nouvel appareil : un .app de simulateur zippé pour iOS, un .apk pour Android. Une plateforme sans URL d’app n’est pas proposée.",
+  "41239dd3b097b411": "Jusqu’à {sessions, plural, one {{sessions} session} other {{sessions} sessions}} à la fois, chacune arrêtée après {maxMinutes} min",
+  "e978bb4807d95fff": "Hôtes d’appareils Revyl (alpha)",
+  "f65d338f279052bd": "bêta alpha revyl cloud simulateur émulateur ios android session",
+  "ec570678c2d46704": "appareil hôtes ssh distant mac mini identité clé connexion eas expo cloud simlock revyl pool passerelle simulateurs locaux",
+  "fa2154830fd6bdec": "Revyl"
 }

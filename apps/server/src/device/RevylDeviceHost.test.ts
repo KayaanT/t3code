@@ -8,10 +8,12 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Socket from "effect/socket/Socket";
 
 import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -56,6 +58,7 @@ const fakeRevyl = Effect.gen(function* () {
   }> = [];
   const commands: Array<{ readonly args: ReadonlyArray<string>; readonly env: NodeJS.ProcessEnv }> =
     [];
+  const actions = yield* Queue.unbounded<{ readonly action: string; readonly body: unknown }>();
   const http = HttpClient.make((request) =>
     Effect.sync(() => {
       const url = new URL(request.url);
@@ -84,6 +87,16 @@ const fakeRevyl = Effect.gen(function* () {
       if (url.pathname.endsWith("/health"))
         return json({ screen_width: 1080, screen_height: 2400, device_connected: true });
       if (url.pathname.endsWith("/reset_video")) return json({ success: true });
+      const action = /\/device-proxy\/[^/]+\/(tap|input|key|set_orientation)$/.exec(
+        url.pathname,
+      )?.[1];
+      if (action) {
+        Queue.offerUnsafe(actions, {
+          action,
+          body: JSON.parse(new TextDecoder().decode((request.body as { body: Uint8Array }).body)),
+        });
+        return json({ success: true });
+      }
       return json({}, 404);
     }),
   );
@@ -105,7 +118,7 @@ const fakeRevyl = Effect.gen(function* () {
       }).pipe(Effect.orDie),
   });
   const ran = (command: string) => commands.filter(({ args }) => args[0] === command);
-  return { http, runner, requests, ran };
+  return { http, runner, requests, ran, actions };
 });
 
 const makeSecretResolver = () =>
@@ -374,6 +387,102 @@ describe("Revyl device host", () => {
       expect(unknown.status).toBe(404);
       yield* Scope.close(scope, Exit.void);
     }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+});
+
+describe("Revyl panel input", () => {
+  const frame = (tag: number, payload: unknown) =>
+    new Uint8Array([tag, ...new TextEncoder().encode(JSON.stringify(payload))]);
+  const key = (usage: number) => [
+    frame(0x06, { type: "down", usage }),
+    frame(0x06, { type: "up", usage }),
+  ];
+  const shifted = (usage: number) => [
+    frame(0x06, { type: "down", usage: 0xe1 }),
+    ...key(usage),
+    frame(0x06, { type: "up", usage: 0xe1 }),
+  ];
+
+  it.effect("types keys into the field last tapped, then rotates the panel's screen", () =>
+    Effect.gen(function* () {
+      const revyl = yield* fakeRevyl;
+      const { scope, ready, deviceId } = yield* openAndroid(revyl);
+      const incoming = yield* Queue.unbounded<Uint8Array>();
+      const outgoing = yield* Queue.unbounded<unknown>();
+      const socket = Socket.make({
+        reader: Effect.succeed({ pull: Queue.takeAll(incoming), upgrade: () => Effect.void }),
+        writer: Effect.succeed({
+          write: (chunk) =>
+            Queue.offer(
+              outgoing,
+              JSON.parse(new TextDecoder().decode((chunk as Uint8Array).subarray(1)) || "null"),
+            ),
+          writeAll: () => Effect.void,
+        }),
+      });
+      const upgraded: HttpServerRequest.HttpServerRequest = Object.create(get("/x"), {
+        upgrade: { value: Effect.succeed(socket) },
+      });
+      yield* ready.serve!(
+        upgraded,
+        "/vendor/serve-sim/helper/ws",
+        new URLSearchParams({ device: deviceId }),
+      ).pipe(Effect.forkChild);
+      expect(yield* Queue.take(outgoing)).toBeNull();
+      expect(yield* Queue.take(outgoing)).toEqual({
+        width: 1080,
+        height: 2400,
+        orientation: "portrait",
+      });
+
+      yield* Queue.offerAll(incoming, [
+        frame(0x03, { type: "begin", x: 0.5, y: 0.25 }),
+        frame(0x03, { type: "end", x: 0.5, y: 0.25 }),
+        ...shifted(0x0b),
+        ...key(0x0c),
+        frame(0x06, { type: "down", usage: 0xe3 }),
+        ...key(0x19),
+        frame(0x06, { type: "up", usage: 0xe3 }),
+        ...shifted(0x1e),
+        ...key(0x28),
+        frame(0x07, { orientation: "landscape_left" }),
+      ]);
+      expect(yield* Queue.take(revyl.actions)).toEqual({ action: "tap", body: { x: 540, y: 600 } });
+      let typed = "";
+      let next = yield* Queue.take(revyl.actions);
+      while (next.action === "input") {
+        expect(next.body).toMatchObject({ x: 540, y: 600, clear_first: false });
+        typed += (next.body as { text: string }).text;
+        next = yield* Queue.take(revyl.actions);
+      }
+      expect(typed).toBe("Hi!");
+      expect(next).toEqual({ action: "key", body: { key: "ENTER" } });
+      expect(yield* Queue.take(revyl.actions)).toEqual({
+        action: "set_orientation",
+        body: { orientation: "landscape" },
+      });
+      expect(yield* Queue.take(outgoing)).toEqual({
+        width: 2400,
+        height: 1080,
+        orientation: "landscape_left",
+      });
+      yield* Scope.close(scope, Exit.void);
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
+  it.each([
+    ["portrait_upside_down", false, "portrait", "portrait"],
+    ["landscape_right", false, "landscape_left", "landscape"],
+    ["portrait_upside_down", true, "portrait_upside_down", "upside_down"],
+    ["landscape_right", true, "landscape_right", "landscape_right"],
+  ] as const)(
+    "rotates a request for %s to what Revyl supports (precise: %s)",
+    (requested, precise, shown, sent) => {
+      expect(RevylDeviceHost.revylOrientation(requested, precise)).toEqual({
+        orientation: shown,
+        body: { orientation: sent },
+      });
+    },
   );
 });
 

@@ -295,16 +295,21 @@ describe("device hub proxy", () => {
 
   it("lets a host answer allowed hub requests itself, without the ticket or host id", async () => {
     const served: Array<string> = [];
+    const invalidated = Promise.withResolvers<void>();
     const { handler, requests } = fixture(
       [AuthOrchestrationReadScope],
       false,
       undefined,
       undefined,
+      undefined,
+      invalidated.promise,
       (_request, hubPath, search) =>
-        Effect.sync(() => {
-          served.push(hubPath + "?" + search.toString());
-          return HttpServerResponse.jsonUnsafe({ answered: true });
-        }),
+        hubPath.endsWith("/stream.avcc")
+          ? Effect.never
+          : Effect.sync(() => {
+              served.push(hubPath + "?" + search.toString());
+              return HttpServerResponse.jsonUnsafe({ answered: true });
+            }),
     );
     const answered = await handler(
       new Request(
@@ -318,6 +323,11 @@ describe("device hub proxy", () => {
     expect(shell.status).toBe(404);
     expect(served).toEqual(["/vendor/serve-sim/api?device=run-1"]);
     expect(requests).toEqual([]);
+    const held = handler(
+      new Request("http://t3.test/api/device-hub/vendor/serve-sim/helper/run-1/stream.avcc"),
+    );
+    invalidated.resolve();
+    expect((await held).status).toBe(204);
   });
 
   it("never forwards the vendor shell endpoint", async () => {

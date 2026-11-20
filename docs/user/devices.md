@@ -185,9 +185,12 @@ device support ends its sessions. If the server stops without ending them,
 each one ends at its session limit, and the host stops any it left behind the
 next time it starts.
 
-The panel shows the device's screen live. You can tap, long-press, and swipe,
-and press Home, and Back on Android. Rotation and typing on your keyboard are
-not offered yet. Agents drive the same session through `device_open`. A cloud
+The panel shows the device's screen live. You can tap, long-press, swipe, and
+rotate it, and press Home, and Back on Android. Tap a text field, then type on
+your keyboard: Revyl enters text at the point you tapped, so a few keys typed
+quickly arrive together, and pasting is not offered. Without precise rotation
+support, a device turns between portrait and one landscape orientation. Agents
+drive the same session through `device_open`. A cloud
 device cannot reach development servers on your machine through localhost; use
 an address it can reach. To point T3 at another Revyl API, set
 `REVYL_API_URL` to its HTTPS origin on the environment's server.

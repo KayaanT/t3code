@@ -577,10 +577,10 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "revyl-hosts",
-    title: "Revyl device hosts (alpha)",
+    title: msg("Revyl device hosts (alpha)"),
     to: "/settings/labs",
     scope: "environment",
-    searchTerms: ["beta alpha revyl cloud simulator emulator ios android session"],
+    searchTerms: [msg("beta alpha revyl cloud simulator emulator ios android session")],
   },
   {
     id: "worktree-fast-checkout",

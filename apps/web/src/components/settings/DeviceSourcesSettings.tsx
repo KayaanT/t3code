@@ -328,7 +328,7 @@ export function DeviceSourcesSettings(props: {
           ),
         },
       })),
-      remove ? "Revyl host not removed everywhere" : "Revyl host not saved everywhere",
+      remove ? gt("Revyl host not removed everywhere") : gt("Revyl host not saved everywhere"),
     );
     if (saved) setEditing(null);
   };
@@ -623,7 +623,7 @@ export function DeviceSourcesSettings(props: {
         shared: true,
         title: host.label,
         kind: "Revyl",
-        description: revylSessionLimits(host),
+        description: revylSessionLimits(host, m),
         environments: active.map((member) => {
           const added = holders.some((holder) => holder.environmentId === member.environmentId);
           return {
@@ -702,7 +702,7 @@ export function DeviceSourcesSettings(props: {
               })
             }
           >
-            Revyl (alpha)
+            <T>Revyl (alpha)</T>
           </MenuItem>
         ) : null}
       </MenuPopup>

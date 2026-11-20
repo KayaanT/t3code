@@ -6,6 +6,7 @@ import {
   type RevylDeviceHostConfig,
   type SettingsSecretValue,
 } from "@t3tools/contracts";
+import { T, useGT } from "gt-react";
 import { XIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -43,6 +44,7 @@ export function RevylDeviceHostEditor(props: {
   onSave: (host: RevylDeviceHostConfig) => void;
   onClose: () => void;
 }) {
+  const gt = useGT();
   const [draft, setDraft] = useState(props.host);
   const keyId = useId();
   const secretSources = useSecretSources(props.environmentId);
@@ -61,8 +63,8 @@ export function RevylDeviceHostEditor(props: {
   const problem = valid
     ? null
     : !keyValid
-      ? "Enter a valid secret reference."
-      : "Give the host a name, https app URLs, and limits within the ranges shown.";
+      ? gt("Enter a valid secret reference.")
+      : gt("Give the host a name, https app URLs, and limits within the ranges shown.");
 
   const appUrl = (field: "iosAppUrl" | "androidAppUrl", label: string, placeholder: string) => (
     <label className="block space-y-1.5 text-sm">
@@ -118,15 +120,19 @@ export function RevylDeviceHostEditor(props: {
           }}
         >
           <DialogHeader>
-            <DialogTitle>{props.isNew ? "Add Revyl host" : "Edit Revyl host"}</DialogTitle>
+            <DialogTitle>{props.isNew ? gt("Add Revyl host") : gt("Edit Revyl host")}</DialogTitle>
             <DialogDescription>
-              The environment's server starts cloud simulators and emulators on Revyl with this key.
-              Without a key here it uses REVYL_API_KEY.
+              <T>
+                The environment's server starts cloud simulators and emulators on Revyl with this
+                key. Without a key here it uses REVYL_API_KEY.
+              </T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <label className="block space-y-1.5 text-sm">
-              <span>Name</span>
+              <span>
+                <T>Name</T>
+              </span>
               <Input
                 autoFocus
                 required
@@ -140,13 +146,13 @@ export function RevylDeviceHostEditor(props: {
             </label>
             <div className="space-y-1.5 text-sm">
               <label htmlFor={keyId} className="block">
-                Revyl API key
+                <T>Revyl API key</T>
               </label>
               <div className="flex items-center gap-2">
                 <SecretSourceInput
                   key={keyInputKey}
                   id={keyId}
-                  aria-label="Revyl API key"
+                  aria-label={gt("Revyl API key")}
                   className="min-w-0 flex-1"
                   configured={apiKey.kind === "saved" && typeof props.host.apiKey === "string"}
                   value={
@@ -162,7 +168,7 @@ export function RevylDeviceHostEditor(props: {
                     setApiKey(secret ? { kind: "new", value: secret } : { kind: "cleared" })
                   }
                   disabled={props.busy}
-                  placeholder="Optional"
+                  placeholder={gt("Optional")}
                   onChange={(event) => {
                     const value = event.target.value;
                     setApiKey(
@@ -179,7 +185,7 @@ export function RevylDeviceHostEditor(props: {
                     type="button"
                     size="icon-sm"
                     variant="ghost-destructive"
-                    aria-label="Clear API key"
+                    aria-label={gt("Clear API key")}
                     onClick={() => {
                       setApiKey({ kind: "cleared" });
                       setKeyValid(true);
@@ -191,20 +197,26 @@ export function RevylDeviceHostEditor(props: {
                 ) : null}
               </div>
             </div>
-            {appUrl("iosAppUrl", "iOS app URL", "https://…/MyApp-simulator.zip")}
-            {appUrl("androidAppUrl", "Android app URL", "https://…/app-debug.apk")}
+            {appUrl("iosAppUrl", gt("iOS app URL"), "https://…/MyApp-simulator.zip")}
+            {appUrl("androidAppUrl", gt("Android app URL"), "https://…/app-debug.apk")}
             <p className="text-xs text-muted-foreground">
-              Revyl installs the app on every new device: a zipped simulator .app for iOS, an .apk
-              for Android. A platform without an app URL is not offered.
+              <T>
+                Revyl installs the app on every new device: a zipped simulator .app for iOS, an .apk
+                for Android. A platform without an app URL is not offered.
+              </T>
             </p>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {limit("maxSessions", "Sessions at once", 1, 10)}
-              {limit("maxSessionMinutes", "Session minutes", 5, 120)}
+              {limit("maxSessions", gt("Sessions at once"), 1, 10)}
+              {limit("maxSessionMinutes", gt("Session minutes"), 5, 120)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Sessions bill the Revyl organization until they stop, so each one ends after the
-              session minutes even if it is still open.
-              {props.isNew ? null : " Saving restarts this host, which stops its running sessions."}
+              {props.isNew
+                ? gt(
+                    "Sessions bill the Revyl organization until they stop, so each one ends after the session minutes even if it is still open.",
+                  )
+                : gt(
+                    "Sessions bill the Revyl organization until they stop, so each one ends after the session minutes even if it is still open. Saving restarts this host, which stops its running sessions.",
+                  )}
             </p>
             {problem === null ? null : (
               <p className="text-xs text-destructive" role="alert">
@@ -214,10 +226,10 @@ export function RevylDeviceHostEditor(props: {
           </DialogPanel>
           <DialogFooter>
             <Button type="button" variant="ghost" disabled={props.busy} onClick={props.onClose}>
-              Cancel
+              <T>Cancel</T>
             </Button>
             <Button type="submit" disabled={props.busy || !valid}>
-              {props.busy ? <Spinner size="xs" /> : null} Save host
+              {props.busy ? <Spinner size="xs" /> : null} <T>Save host</T>
             </Button>
           </DialogFooter>
         </form>

@@ -228,7 +228,11 @@ const handler = Effect.gen(function* () {
   upstreamSearch.delete("wsTicket");
   upstreamSearch.delete("hostId");
   const search = upstreamSearch.size > 0 ? `?${upstreamSearch.toString()}` : "";
-  if (ready.serve) return yield* ready.serve(request, hubPath, upstreamSearch);
+  if (ready.serve)
+    return yield* Effect.raceFirst(
+      ready.serve(request, hubPath, upstreamSearch),
+      invalidated.pipe(Effect.as(HttpServerResponse.empty())),
+    );
   const screenshotDevice = upstreamSearch.get("device");
   if (
     screenshotDevice &&

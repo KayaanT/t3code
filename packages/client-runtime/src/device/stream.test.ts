@@ -489,6 +489,7 @@ describe("shared device stream readiness and recovery", () => {
     expect(events.onInputConnected).toHaveBeenLastCalledWith(true, undefined);
     client.sendTouch("begin", 0.25, 0.5);
     client.pressButton("back");
+    client.rotate();
     const sent = input.send.mock.calls.map(([payload]) => {
       const bytes = payload as Uint8Array;
       return [bytes[0], JSON.parse(new TextDecoder().decode(bytes.subarray(1)))];
@@ -496,6 +497,7 @@ describe("shared device stream readiness and recovery", () => {
     expect(sent).toEqual([
       [0x03, { type: "begin", x: 0.25, y: 0.5 }],
       [0x04, { button: "back" }],
+      [0x07, { orientation: "landscape_left" }],
     ]);
     client.stop();
   });

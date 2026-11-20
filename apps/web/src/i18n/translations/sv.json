@@ -11912,7 +11912,6 @@
   "f2b07faba1229ce7": "Intervall för hälsokontroll",
   "5c9dc9970db79fe2": "uppdatera tillgänglighet versioner autentiseringsstatus modeller bakgrundskontroller sekunder av",
   "056ba6a180d114b5": "tillåt inaktivera aktivera öppna styr förhandsvisning verktyg sessioner projekt åsidosätt",
-  "345075be6cacc171": "enhetsvärdar ssh fjärr mac mini identitet nyckel anslutning eas expo moln simlock pool gateway lokala simulatorer",
   "a6b742430b05d6cc": "Agenter kan använda enheter",
   "1d5d7418a83575c2": "tillåt simulator emulator ios android styr verktyg sessioner",
   "60f0825756e404dc": "Använd enheter",
@@ -12499,5 +12498,44 @@
   "27d76249d09eb69f": "Granskningsguiden är klar",
   "faa3bb26abb39c93": "Granskningsguiden misslyckades",
   "b7df38b7d8792d78": "Öppna guiden",
-  "9e91e9a77b664e4e": "Kunde inte starta en granskningsguide"
+  "9e91e9a77b664e4e": "Kunde inte starta en granskningsguide",
+  "5819e603828deb17": "Avsluta Revyl-session",
+  "a3a5829cd79cce59": "Revyl-värden togs inte bort överallt",
+  "701c809f3a86a23f": "Revyl-värden sparades inte överallt",
+  "6cd0515129b5448a": "Revyl (alfa)",
+  "f48225ae694f2801": "Revyl-enhetsvärdar",
+  "67cd441c3345c6eb": [
+    "Låt enhetspanelen öppna iOS-simulatorer och Android-emulatorer i molnet från",
+    " ",
+    {
+      "t": "a",
+      "i": 1,
+      "c": "Revyl"
+    },
+    ", tillagda i",
+    " ",
+    {
+      "t": "Link",
+      "i": 2,
+      "c": "Enheter"
+    },
+    ". Sessioner debiteras din Revyl-organisation. En alfa som kan ändras eller gå sönder."
+  ],
+  "a9e2f81b0f3fd13f": "Ge värden ett namn, HTTPS-app-URL:er och gränser inom de visade intervallen.",
+  "8e3a32b457279d83": "Lägg till Revyl-värd",
+  "1bb1d930e4e1d07b": "Redigera Revyl-värd",
+  "b705f347c51bde5e": "Revyl API-nyckel",
+  "59967fff391f11d8": "Rensa API-nyckel",
+  "74662f3d289e5e66": "iOS-app-URL",
+  "6d7a7901e72ce1ca": "Android-app-URL",
+  "2e768da46ef1c850": "Sessioner debiteras Revyl-organisationen tills de stoppas, så var och en avslutas efter sessionsminuterna även om den fortfarande är öppen.",
+  "15d1efd64e706a5a": "Sessioner debiteras Revyl-organisationen tills de stoppas, så var och en avslutas efter sessionsminuterna även om den fortfarande är öppen. Att spara startar om värden, vilket stoppar dess pågående sessioner.",
+  "ba01857a23971184": "Miljöns server startar molnsimulatorer och emulatorer på Revyl med den här nyckeln. Utan nyckel här använder den REVYL_API_KEY.",
+  "9eb3dc4c26c74cd9": "Revyl API-nyckel",
+  "f9a717254a4b65fa": "Revyl installerar appen på varje ny enhet: en zippad simulator-.app för iOS, en .apk för Android. En plattform utan app-URL erbjuds inte.",
+  "41239dd3b097b411": "Upp till {sessions, plural, one {{sessions} session} other {{sessions} sessioner}} samtidigt, var och en stoppas efter {maxMinutes} min",
+  "e978bb4807d95fff": "Revyl-enhetsvärdar (alfa)",
+  "f65d338f279052bd": "beta alfa revyl moln simulator emulator ios android session",
+  "ec570678c2d46704": "enhetsvärdar ssh fjärr mac mini identitet nyckel anslutning eas expo moln simlock revyl pool gateway lokala simulatorer",
+  "fa2154830fd6bdec": "Revyl"
 }

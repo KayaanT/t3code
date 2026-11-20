@@ -20,6 +20,7 @@ import * as FiberMap from "effect/FiberMap";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -60,6 +61,8 @@ const WEBRTC_PATH = /^\/vendor\/serve-sim\/helper\/([^/]+)\/webrtc\/(offer|close
 
 const IOS_MSG_TOUCH = 0x03;
 const IOS_MSG_BUTTON = 0x04;
+const IOS_MSG_KEY = 0x06;
+const IOS_MSG_ORIENTATION = 0x07;
 const IOS_TAG_SCREEN_CONFIG = 0x82;
 const IOS_TAG_INPUT_ADMITTED = 0x83;
 
@@ -76,7 +79,11 @@ const decodeWorkerConnection = Schema.decodeUnknownEffect(
   }),
 );
 const decodeHealth = Schema.decodeUnknownEffect(
-  Schema.Struct({ screen_width: Schema.Number, screen_height: Schema.Number }),
+  Schema.Struct({
+    screen_width: Schema.Number,
+    screen_height: Schema.Number,
+    supports_precise_orientation: Schema.optional(Schema.Boolean),
+  }),
 );
 const decodeDaemonInfo = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ httpPort: Schema.Int, token: Schema.String })),
@@ -107,10 +114,29 @@ const decodeTouch = Schema.decodeUnknownOption(
 const decodeButton = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ button: Schema.String })),
 );
+const decodeKey = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({ type: Schema.Literals(["down", "up"]), usage: Schema.Int }),
+  ),
+);
+const Orientation = Schema.Literals([
+  "portrait",
+  "portrait_upside_down",
+  "landscape_left",
+  "landscape_right",
+]);
+type Orientation = typeof Orientation.Type;
+const decodeOrientation = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ orientation: Orientation })),
+);
 
 interface Screen {
   readonly width: number;
   readonly height: number;
+}
+
+interface PanelScreen extends Screen {
+  readonly orientation: Orientation;
 }
 
 interface Lease {
@@ -124,12 +150,21 @@ interface Lease {
   readonly daemon: DeviceHost.AgentDaemonEndpoint;
   /** The key the session was started with; ending it must not depend on reading the secret again. */
   readonly apiKey: string;
-  readonly screen: Screen;
+  /** Changes when the panel rotates the device. */
+  screen: PanelScreen;
+  /** Without it, Revyl rotates to portrait and one landscape only. */
+  readonly preciseOrientation: boolean;
   readonly whepUrl: string;
   readonly iceServers: ReadonlyArray<typeof IceServer.Type>;
   /** Open WebRTC views, by the client's session id, to their WHEP resource. */
   readonly views: Map<string, string>;
 }
+
+type PanelInput =
+  | { readonly kind: "act"; readonly action: string; readonly body?: unknown }
+  | { readonly kind: "touch"; readonly gesture: ReturnType<typeof touchAction> }
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "rotate"; readonly orientation: Orientation };
 
 interface TouchPoint {
   readonly x: number;
@@ -156,6 +191,61 @@ export const touchAction = (start: TouchPoint, end: TouchPoint, heldMs: number, 
 };
 
 const BUTTON_ACTIONS: Readonly<Record<string, string>> = { home: "go_home", back: "back" };
+
+const HID_SHIFT = new Set([0xe1, 0xe5]);
+/** Control, Option, and Command, whose shortcuts type nothing on the device. */
+const HID_SHORTCUT = new Set([0xe0, 0xe2, 0xe3, 0xe4, 0xe6, 0xe7]);
+const HID_KEYS: Readonly<Record<number, "ENTER" | "BACKSPACE">> = {
+  0x28: "ENTER",
+  0x58: "ENTER",
+  0x2a: "BACKSPACE",
+};
+type HidKey = readonly [usage: number, keys: readonly [plain: string, shifted: string]];
+const HID_TEXT = new Map<number, readonly [string, string]>([
+  ...Array.from("abcdefghijklmnopqrstuvwxyz", (letter, index): HidKey => [
+    0x04 + index,
+    [letter, letter.toUpperCase()],
+  ]),
+  ...Array.from("1234567890", (digit, index): HidKey => [
+    0x1e + index,
+    [digit, "!@#$%^&*()"[index]!],
+  ]),
+  [0x2c, [" ", " "]],
+  [0x2d, ["-", "_"]],
+  [0x2e, ["=", "+"]],
+  [0x2f, ["[", "{"]],
+  [0x30, ["]", "}"]],
+  [0x31, ["\\", "|"]],
+  [0x33, [";", ":"]],
+  [0x34, ["'", '"']],
+  [0x35, ["`", "~"]],
+  [0x36, [",", "<"]],
+  [0x37, [".", ">"]],
+  [0x38, ["/", "?"]],
+]);
+
+/** The text a key types on a US layout, or null for a key that types nothing. */
+const hidText = (usage: number, shifted: boolean) => HID_TEXT.get(usage)?.[shifted ? 1 : 0] ?? null;
+
+/** The orientation Revyl can rotate to that is nearest the one the panel asked for. */
+export const revylOrientation = (requested: Orientation, precise: boolean) => {
+  if (precise)
+    return {
+      orientation: requested,
+      body: { orientation: requested === "portrait_upside_down" ? "upside_down" : requested },
+    };
+  return requested.startsWith("landscape")
+    ? { orientation: "landscape_left" as const, body: { orientation: "landscape" } }
+    : { orientation: "portrait" as const, body: { orientation: "portrait" } };
+};
+
+const orientedScreen = (screen: Screen, orientation: Orientation): PanelScreen => {
+  const long = Math.max(screen.width, screen.height);
+  const short = Math.min(screen.width, screen.height);
+  return orientation.startsWith("landscape")
+    ? { width: long, height: short, orientation }
+    : { width: short, height: long, orientation };
+};
 
 const tagged = (tag: number, payload?: unknown) => {
   const json =
@@ -442,7 +532,11 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
         installDirectory,
         daemon: { baseUrl: `http://127.0.0.1:${daemon.httpPort}`, token: daemon.token },
         apiKey,
-        screen: { width: health.screen_width, height: health.screen_height },
+        screen: orientedScreen(
+          { width: health.screen_width, height: health.screen_height },
+          health.screen_width > health.screen_height ? "landscape_left" : "portrait",
+        ),
+        preciseOrientation: health.supports_precise_orientation === true,
         whepUrl: connection.whep_url,
         iceServers: connection.ice_servers ?? [],
         views: new Map(),
@@ -592,8 +686,10 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
   });
 
   /**
-   * serve-sim's input socket: touches become taps, long presses, and drags through Revyl's device
-   * proxy, one at a time, and the home and back buttons its navigation actions.
+   * serve-sim's input socket. Touches become taps, long presses, and drags through Revyl's device
+   * proxy; the home and back buttons its navigation actions; keys text typed into the field last
+   * tapped, or Enter and Backspace; and rotation its nearest orientation. Requests go one at a time,
+   * in the order the panel sent them.
    */
   const input = Effect.fn("RevylDeviceHost.input")(function* (
     lease: Lease,
@@ -604,38 +700,110 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
       Effect.gen(function* () {
         const { write } = yield* socket.writer;
         const { pull } = yield* socket.reader;
+        const queued = yield* Queue.unbounded<PanelInput>();
+        const act = (action: string, body?: unknown) =>
+          deviceAction(lease, action, body).pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Revyl did not take panel input", { action, cause }),
+            ),
+            Effect.ignore,
+          );
+        const held: Array<PanelInput> = [];
+        let field: { readonly x: number; readonly y: number } | null = null;
+        const next = Effect.gen(function* () {
+          const item = held.shift() ?? (yield* Queue.take(queued));
+          switch (item.kind) {
+            case "act":
+              return yield* act(item.action, item.body);
+            case "touch":
+              if (item.gesture.action === "tap") field = item.gesture.body;
+              return yield* act(item.gesture.action, item.gesture.body);
+            case "rotate": {
+              const target = revylOrientation(item.orientation, lease.preciseOrientation);
+              const rotated = yield* deviceAction(lease, "set_orientation", target.body).pipe(
+                Effect.as(true),
+                Effect.tapError((cause) =>
+                  Effect.logWarning("Revyl did not rotate the device", { cause }),
+                ),
+                Effect.orElseSucceed(() => false),
+              );
+              if (rotated) lease.screen = orientedScreen(lease.screen, target.orientation);
+              return yield* write(tagged(IOS_TAG_SCREEN_CONFIG, lease.screen));
+            }
+            case "text": {
+              // Revyl types at a point, tapping it first, so keys typed meanwhile go in one request.
+              held.push(...(yield* Queue.clear(queued)));
+              const typing = held.findIndex((later) => later.kind !== "text");
+              const text = [item, ...held.splice(0, typing === -1 ? held.length : typing)]
+                .flatMap((typed) => (typed.kind === "text" ? [typed.text] : []))
+                .join("");
+              if (!field) return yield* Effect.logDebug("Dropped panel typing before any tap");
+              return yield* act("input", { ...field, text, clear_first: false });
+            }
+          }
+        });
+        yield* Effect.forkScoped(Effect.forever(next));
+
         yield* write(tagged(IOS_TAG_INPUT_ADMITTED));
-        yield* write(tagged(IOS_TAG_SCREEN_CONFIG, { ...lease.screen, orientation: "portrait" }));
+        yield* write(tagged(IOS_TAG_SCREEN_CONFIG, lease.screen));
         let touch: { readonly start: TouchPoint; readonly at: number } | null = null;
+        const modifiers = new Set<number>();
         while (true) {
           for (const frame of yield* pull) {
             if (typeof frame === "string" || frame.length < 2) continue;
             const json = new TextDecoder().decode(frame.subarray(1));
-            if (frame[0] === IOS_MSG_BUTTON) {
-              const action = Option.flatMap(decodeButton(json), ({ button }) =>
-                Option.fromNullishOr(BUTTON_ACTIONS[button]),
-              );
-              if (Option.isSome(action))
-                yield* deviceAction(lease, action.value).pipe(Effect.ignore);
-              continue;
-            }
-            if (frame[0] !== IOS_MSG_TOUCH) continue;
-            const event = decodeTouch(json);
-            if (Option.isNone(event)) continue;
-            const now = yield* Clock.currentTimeMillis;
-            if (event.value.type === "begin") touch = { start: event.value, at: now };
-            if (event.value.type !== "end" || !touch) continue;
-            const gesture = touchAction(touch.start, event.value, now - touch.at, lease.screen);
-            touch = null;
-            yield* deviceAction(lease, gesture.action, gesture.body).pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning("Revyl did not take a panel touch", {
-                  action: gesture.action,
-                  cause,
-                }),
-              ),
-              Effect.ignore,
-            );
+            const panelInput = yield* Effect.gen(function* (): Effect.fn.Return<PanelInput | null> {
+              switch (frame[0]) {
+                case IOS_MSG_BUTTON: {
+                  const action = Option.flatMap(decodeButton(json), ({ button }) =>
+                    Option.fromNullishOr(BUTTON_ACTIONS[button]),
+                  );
+                  return Option.isSome(action) ? { kind: "act", action: action.value } : null;
+                }
+                case IOS_MSG_ORIENTATION:
+                  return Option.match(decodeOrientation(json), {
+                    onNone: () => null,
+                    onSome: ({ orientation }) => ({ kind: "rotate", orientation }),
+                  });
+                case IOS_MSG_KEY: {
+                  const key = decodeKey(json);
+                  if (Option.isNone(key)) return null;
+                  const { type, usage } = key.value;
+                  if (HID_SHIFT.has(usage) || HID_SHORTCUT.has(usage)) {
+                    if (type === "down") modifiers.add(usage);
+                    else modifiers.delete(usage);
+                    return null;
+                  }
+                  if (type !== "down" || [...modifiers].some((held) => HID_SHORTCUT.has(held)))
+                    return null;
+                  const named = HID_KEYS[usage];
+                  if (named) return { kind: "act", action: "key", body: { key: named } };
+                  const text = hidText(
+                    usage,
+                    [...modifiers].some((held) => HID_SHIFT.has(held)),
+                  );
+                  return text === null ? null : { kind: "text", text };
+                }
+                case IOS_MSG_TOUCH: {
+                  const event = decodeTouch(json);
+                  if (Option.isNone(event)) return null;
+                  const now = yield* Clock.currentTimeMillis;
+                  if (event.value.type === "begin") touch = { start: event.value, at: now };
+                  if (event.value.type !== "end" || !touch) return null;
+                  const gesture = touchAction(
+                    touch.start,
+                    event.value,
+                    now - touch.at,
+                    lease.screen,
+                  );
+                  touch = null;
+                  return { kind: "touch", gesture };
+                }
+                default:
+                  return null;
+              }
+            });
+            if (panelInput) yield* Queue.offer(queued, panelInput);
           }
         }
       }),

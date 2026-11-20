@@ -265,15 +265,17 @@ function SimlockHostsRow() {
 }
 
 function RevylHostsRow() {
+  const searchableSetting = useSearchableSetting();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
+  const gt = useGT();
   return (
     <SettingsRow
       serverScoped
       {...searchableSetting("revyl-hosts")}
       settingKeys={["revylDeviceHostsEnabled"]}
       description={
-        <>
+        <T>
           Let the Device panel open cloud iOS simulators and Android emulators from{" "}
           <a
             href="https://revyl.ai"
@@ -288,7 +290,7 @@ function RevylHostsRow() {
             Devices
           </Link>
           . Sessions bill your Revyl organization. An alpha that may change or break.
-        </>
+        </T>
       }
       control={
         <ScopedSwitch
@@ -297,7 +299,7 @@ function RevylHostsRow() {
           onCheckedChange={(checked) =>
             updateSettings({ revylDeviceHostsEnabled: Boolean(checked) })
           }
-          aria-label="Revyl device hosts"
+          aria-label={gt("Revyl device hosts")}
         />
       }
     />

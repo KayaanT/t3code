@@ -3,13 +3,19 @@ import {
   type RevylDeviceHostConfig as RevylDeviceHostConfigType,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import { msg } from "gt-react";
+
+import { m, type MessageResolver } from "../../i18n/messages";
 
 export const parseRevylDeviceHostDraft = Schema.decodeUnknownOption(RevylDeviceHostConfig);
 
-export const newRevylDeviceHost = (id: string): RevylDeviceHostConfigType => ({
+export const newRevylDeviceHost = (
+  id: string,
+  resolve: MessageResolver = m,
+): RevylDeviceHostConfigType => ({
   kind: "revyl",
   id,
-  label: "Revyl",
+  label: resolve(msg("Revyl")),
   apiKey: "",
   maxSessions: 2,
   maxSessionMinutes: 30,
@@ -33,7 +39,11 @@ export function updateRevylDeviceHosts(
     : [...hosts, next];
 }
 
-export function revylSessionLimits(host: RevylDeviceHostConfigType) {
-  const sessions = host.maxSessions === 1 ? "1 session" : `${host.maxSessions} sessions`;
-  return `Up to ${sessions} at once, each stopped after ${host.maxSessionMinutes} min`;
+export function revylSessionLimits(host: RevylDeviceHostConfigType, resolve: MessageResolver = m) {
+  return resolve(
+    msg(
+      "Up to {sessions, plural, one {{sessions} session} other {{sessions} sessions}} at once, each stopped after {maxMinutes} min",
+      { sessions: host.maxSessions, maxMinutes: host.maxSessionMinutes },
+    ),
+  );
 }

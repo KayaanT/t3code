@@ -11914,7 +11914,6 @@
   "f2b07faba1229ce7": "Health check interval",
   "5c9dc9970db79fe2": "refresh availability versions auth state models background probes seconds off",
   "056ba6a180d114b5": "allow disable enable open drive preview tools sessions project override",
-  "345075be6cacc171": "device hosts ssh remote mac mini identity key connection eas expo cloud simlock pool gateway local simulators",
   "a6b742430b05d6cc": "Agents can use devices",
   "1d5d7418a83575c2": "allow simulator emulator ios android drive tools sessions",
   "60f0825756e404dc": "Use devices",
@@ -12501,5 +12500,44 @@
   "27d76249d09eb69f": "Review guide ready",
   "faa3bb26abb39c93": "Review guide failed",
   "b7df38b7d8792d78": "Open guide",
-  "9e91e9a77b664e4e": "Could not start a review guide"
+  "9e91e9a77b664e4e": "Could not start a review guide",
+  "5819e603828deb17": "End Revyl session",
+  "a3a5829cd79cce59": "Revyl host not removed everywhere",
+  "701c809f3a86a23f": "Revyl host not saved everywhere",
+  "6cd0515129b5448a": "Revyl (alpha)",
+  "f48225ae694f2801": "Revyl device hosts",
+  "67cd441c3345c6eb": [
+    "Let the Device panel open cloud iOS simulators and Android emulators from",
+    " ",
+    {
+      "t": "a",
+      "i": 1,
+      "c": "Revyl"
+    },
+    ", added in",
+    " ",
+    {
+      "t": "Link",
+      "i": 2,
+      "c": "Devices"
+    },
+    ". Sessions bill your Revyl organization. An alpha that may change or break."
+  ],
+  "a9e2f81b0f3fd13f": "Give the host a name, https app URLs, and limits within the ranges shown.",
+  "8e3a32b457279d83": "Add Revyl host",
+  "1bb1d930e4e1d07b": "Edit Revyl host",
+  "b705f347c51bde5e": "Revyl API key",
+  "59967fff391f11d8": "Clear API key",
+  "74662f3d289e5e66": "iOS app URL",
+  "6d7a7901e72ce1ca": "Android app URL",
+  "2e768da46ef1c850": "Sessions bill the Revyl organization until they stop, so each one ends after the session minutes even if it is still open.",
+  "15d1efd64e706a5a": "Sessions bill the Revyl organization until they stop, so each one ends after the session minutes even if it is still open. Saving restarts this host, which stops its running sessions.",
+  "ba01857a23971184": "The environment's server starts cloud simulators and emulators on Revyl with this key. Without a key here it uses REVYL_API_KEY.",
+  "9eb3dc4c26c74cd9": "Revyl API key",
+  "f9a717254a4b65fa": "Revyl installs the app on every new device: a zipped simulator .app for iOS, an .apk for Android. A platform without an app URL is not offered.",
+  "41239dd3b097b411": "Up to {sessions, plural, one {{sessions} session} other {{sessions} sessions}} at once, each stopped after {maxMinutes} min",
+  "e978bb4807d95fff": "Revyl device hosts (alpha)",
+  "f65d338f279052bd": "beta alpha revyl cloud simulator emulator ios android session",
+  "ec570678c2d46704": "device hosts ssh remote mac mini identity key connection eas expo cloud simlock pool gateway revyl local simulators",
+  "fa2154830fd6bdec": "Revyl"
 }

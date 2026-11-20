@@ -1487,7 +1487,7 @@ export function createDeviceStreamClient(
       }
     },
     rotate: () => {
-      if (platform !== "ios") return;
+      if (!avcc) return;
       const current = screen?.supportsHingeAngle
         ? (rotationCursor ?? screen.orientation)
         : (screen?.orientation ?? "portrait");
@@ -1499,7 +1499,7 @@ export function createDeviceStreamClient(
       } else send(taggedJson(IOS_MSG_ORIENTATION, { orientation: next }));
     },
     setOrientation: (orientation) => {
-      if (platform === "ios") send(taggedJson(IOS_MSG_ORIENTATION, { orientation }));
+      if (avcc) send(taggedJson(IOS_MSG_ORIENTATION, { orientation }));
     },
   };
 }

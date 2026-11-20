@@ -230,7 +230,7 @@ export function DevicePreviewScreen({
       disabled: !inputConnected,
       onPress: () => streamRef.current?.appSwitcher(),
     },
-    ...(preview?.session.platform === "ios"
+    ...(preview?.rotates
       ? [
           {
             id: "rotate",

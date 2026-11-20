@@ -119,9 +119,18 @@ export function DeviceControlsRail(props: {
                   </MenuItem>
                 </MenuPopup>
               </Menu>
+            ) : props.hostKind === "revyl" ? (
+              <RailButton
+                tooltipSide={popupSide}
+                label={gt("Rotate device")}
+                disabled={inputDisabled}
+                onClick={() => handle?.rotate()}
+              >
+                <RotateCcw />
+              </RailButton>
             ) : null}
           </>
-        ) : props.hostKind === "simlock" || props.hostKind === "revyl" ? null : (
+        ) : props.hostKind === "simlock" ? null : (
           <RailButton
             tooltipSide={popupSide}
             label={gt("Rotate device")}
