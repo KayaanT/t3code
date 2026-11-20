@@ -235,7 +235,7 @@ export const revylOrientation = (requested: Orientation, precise: boolean) => {
       body: { orientation: requested === "portrait_upside_down" ? "upside_down" : requested },
     };
   return requested.startsWith("landscape")
-    ? { orientation: "landscape_left" as const, body: { orientation: "landscape" } }
+    ? { orientation: "landscape_right" as const, body: { orientation: "landscape" } }
     : { orientation: "portrait" as const, body: { orientation: "portrait" } };
 };
 

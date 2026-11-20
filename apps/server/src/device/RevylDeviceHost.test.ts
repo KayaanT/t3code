@@ -470,7 +470,7 @@ describe("Revyl panel input", () => {
       expect(yield* Queue.take(outgoing)).toEqual({
         width: 2400,
         height: 1080,
-        orientation: "landscape_left",
+        orientation: "landscape_right",
       });
       yield* Scope.close(scope, Exit.void);
     }).pipe(Effect.scoped, Effect.provide(layer)),
@@ -478,7 +478,7 @@ describe("Revyl panel input", () => {
 
   it.each([
     ["portrait_upside_down", false, "portrait", "portrait"],
-    ["landscape_right", false, "landscape_left", "landscape"],
+    ["landscape_left", false, "landscape_right", "landscape"],
     ["portrait_upside_down", true, "portrait_upside_down", "upside_down"],
     ["landscape_right", true, "landscape_right", "landscape_right"],
   ] as const)(
