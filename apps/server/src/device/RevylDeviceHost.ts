@@ -239,14 +239,6 @@ export const revylOrientation = (requested: Orientation, precise: boolean) => {
     : { orientation: "portrait" as const, body: { orientation: "portrait" } };
 };
 
-const orientedScreen = (screen: Screen, orientation: Orientation): PanelScreen => {
-  const long = Math.max(screen.width, screen.height);
-  const short = Math.min(screen.width, screen.height);
-  return orientation.startsWith("landscape")
-    ? { width: long, height: short, orientation }
-    : { width: short, height: long, orientation };
-};
-
 const tagged = (tag: number, payload?: unknown) => {
   const json =
     payload === undefined ? new Uint8Array() : new TextEncoder().encode(JSON.stringify(payload));
@@ -532,10 +524,11 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
         installDirectory,
         daemon: { baseUrl: `http://127.0.0.1:${daemon.httpPort}`, token: daemon.token },
         apiKey,
-        screen: orientedScreen(
-          { width: health.screen_width, height: health.screen_height },
-          health.screen_width > health.screen_height ? "landscape_left" : "portrait",
-        ),
+        screen: {
+          width: health.screen_width,
+          height: health.screen_height,
+          orientation: health.screen_width > health.screen_height ? "landscape_left" : "portrait",
+        },
         preciseOrientation: health.supports_precise_orientation === true,
         whepUrl: connection.whep_url,
         iceServers: connection.ice_servers ?? [],
@@ -720,14 +713,21 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
               return yield* act(item.gesture.action, item.gesture.body);
             case "rotate": {
               const target = revylOrientation(item.orientation, lease.preciseOrientation);
-              const rotated = yield* deviceAction(lease, "set_orientation", target.body).pipe(
-                Effect.as(true),
+              // Revyl reports the screen in the units its taps use: an iOS simulator keeps its
+              // portrait framebuffer, which the panel turns, and an Android emulator turns its own.
+              lease.screen = yield* deviceAction(lease, "set_orientation", target.body).pipe(
+                Effect.andThen(revylJson(lease.apiKey, "GET", proxyRoute(lease, "health"))),
+                Effect.flatMap(decodeHealth),
+                Effect.map((health): PanelScreen => ({
+                  width: health.screen_width,
+                  height: health.screen_height,
+                  orientation: target.orientation,
+                })),
                 Effect.tapError((cause) =>
                   Effect.logWarning("Revyl did not rotate the device", { cause }),
                 ),
-                Effect.orElseSucceed(() => false),
+                Effect.orElseSucceed(() => lease.screen),
               );
-              if (rotated) lease.screen = orientedScreen(lease.screen, target.orientation);
               return yield* write(tagged(IOS_TAG_SCREEN_CONFIG, lease.screen));
             }
             case "text": {

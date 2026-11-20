@@ -59,6 +59,7 @@ const fakeRevyl = Effect.gen(function* () {
   const commands: Array<{ readonly args: ReadonlyArray<string>; readonly env: NodeJS.ProcessEnv }> =
     [];
   const actions = yield* Queue.unbounded<{ readonly action: string; readonly body: unknown }>();
+  let rotated = false;
   const http = HttpClient.make((request) =>
     Effect.sync(() => {
       const url = new URL(request.url);
@@ -85,12 +86,17 @@ const fakeRevyl = Effect.gen(function* () {
       if (url.pathname.endsWith("/worker-connection/" + RUN_ID))
         return json({ status: "ready", whep_url: WHEP, ice_servers: [{ urls: "stun:stun.test" }] });
       if (url.pathname.endsWith("/health"))
-        return json({ screen_width: 1080, screen_height: 2400, device_connected: true });
+        return json(
+          rotated
+            ? { screen_width: 2400, screen_height: 1080, device_connected: true }
+            : { screen_width: 1080, screen_height: 2400, device_connected: true },
+        );
       if (url.pathname.endsWith("/reset_video")) return json({ success: true });
       const action = /\/device-proxy\/[^/]+\/(tap|input|key|set_orientation)$/.exec(
         url.pathname,
       )?.[1];
       if (action) {
+        if (action === "set_orientation") rotated = true;
         Queue.offerUnsafe(actions, {
           action,
           body: JSON.parse(new TextDecoder().decode((request.body as { body: Uint8Array }).body)),
