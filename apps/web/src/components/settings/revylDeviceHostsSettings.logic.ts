@@ -19,6 +19,8 @@ export const newRevylDeviceHost = (
   apiKey: "",
   maxSessions: 2,
   maxSessionMinutes: 30,
+  macs: false,
+  macIdleMinutes: 15,
 });
 
 /**

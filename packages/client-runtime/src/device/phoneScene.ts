@@ -181,7 +181,7 @@ export function createPhoneScene(
     backMaterial,
   );
   cameraPlate.name = "camera-plate";
-  rearCamera.add(cameraPlate);
+  if (profile.camera.width > 0) rearCamera.add(cameraPlate);
   for (const [x, y] of profile.camera.lenses) {
     const radius = profile.camera.lensRadius;
     const ring = new Mesh(new CylinderGeometry(radius + 0.014, radius + 0.014, 0.025, 32), metal);

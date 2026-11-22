@@ -318,9 +318,11 @@ export function DevicePanel(props: {
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Smartphone className="size-4 shrink-0" />
                           <h3 className="font-medium">
-                            {group.platform === "ios"
-                              ? gt("iOS Simulators")
-                              : gt("Android Emulators")}
+                            {group.platform === "macos"
+                              ? gt("Revyl Macs")
+                              : group.platform === "ios"
+                                ? gt("iOS Simulators")
+                                : gt("Android Emulators")}
                           </h3>
                         </div>
                         <DiscoveryList>
@@ -440,7 +442,7 @@ function DeviceDiscoveryWarning(props: {
   if (dismissedCause !== null && dismissedCause !== cause) setDismissedCause(null);
   if (dismissedCause === cause) return null;
   const platforms = props.incompletePlatforms.map((platform) =>
-    platform === "ios" ? "iOS" : "Android",
+    platform === "macos" ? "macOS" : platform === "ios" ? "iOS" : "Android",
   );
   return (
     <div
@@ -510,7 +512,7 @@ function DeviceDiscoveryWarning(props: {
 
 function groupDevices(state: DeviceServiceState) {
   const groups: Array<{ platform: DevicePlatform; devices: DeviceSummary[] }> = [];
-  for (const platform of ["ios", "android"] as const) {
+  for (const platform of ["ios", "android", "macos"] as const) {
     const devices = state.devices
       .filter((device) => device.platform === platform)
       .toSorted((a, b) => Number(b.booted) - Number(a.booted) || a.name.localeCompare(b.name));

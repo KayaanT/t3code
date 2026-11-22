@@ -10,6 +10,7 @@ import {
   DeviceHostUnavailableError,
   DeviceOperationError,
   type DevicePlatform,
+  type MobileDevicePlatform,
   type EasDeviceHostConfig,
   type SettingsSecretValue,
 } from "@t3tools/contracts";
@@ -97,7 +98,7 @@ const CATALOG: ReadonlyArray<DeviceHost.HostDevice> = [
 interface RunningSession {
   readonly sessionId: string;
   readonly name: string;
-  readonly platform: DevicePlatform;
+  readonly platform: MobileDevicePlatform;
   readonly remoteDeviceId: string;
   readonly preview: { readonly origin: string; readonly token: Redacted.Redacted<string> };
   readonly agent: DeviceHost.AgentDaemonEndpoint;
@@ -410,7 +411,7 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
   const previewDevice = (
     origin: string,
     token: Redacted.Redacted<string>,
-    platform: DevicePlatform,
+    platform: MobileDevicePlatform,
   ) =>
     http
       .execute(
@@ -489,6 +490,8 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
     context: DeviceHost.DeviceOpenContext | undefined,
     startedIn: number,
   ) {
+    const platform = device.platform;
+    if (platform === "macos") return yield* unavailable("Expo Simulators has no Macs.");
     const name = `T3 Code · ${config.label} · ${(yield* Random.nextIntBetween(0, 0xffffff)).toString(16).padStart(6, "0")}`;
     // The credential comes first: without one, the answer is how to sign in,
     // not that the limit is reached.
@@ -524,7 +527,7 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
               const sessionId = yield* expo
                 .create({
                   appId,
-                  platform: device.platform,
+                  platform,
                   name,
                   maxRunTimeMinutes: config.maxSessionMinutes,
                   maxIdleTimeMinutes: config.idleMinutes,
@@ -556,9 +559,7 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
                   ),
                   Effect.mapError((error) => unavailable(error.message, error)),
                 );
-              return yield* restore(
-                trackSession(expo, sessionId, name, device.platform, startedIn),
-              ).pipe(
+              return yield* restore(trackSession(expo, sessionId, name, platform, startedIn)).pipe(
                 Effect.onError(() =>
                   stopSession(expo, sessionId, name).pipe(
                     // Still running and billed: owned, counted, and retried by listing.
@@ -578,7 +579,7 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
     expo: ExpoApi,
     sessionId: string,
     name: string,
-    platform: DevicePlatform,
+    platform: MobileDevicePlatform,
     startedIn: number,
   ) {
     const endpoints = yield* awaitRunning(expo, sessionId);

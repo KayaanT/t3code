@@ -39,7 +39,7 @@ export interface DeviceHubTarget {
 }
 
 const vendorBase = (target: DeviceHubTarget) =>
-  `${target.access.httpBase}${target.platform === "ios" ? "/vendor/serve-sim" : "/vendor/serve-emu"}`;
+  `${target.access.httpBase}${target.platform === "android" ? "/vendor/serve-emu" : "/vendor/serve-sim"}`;
 
 const hubUrl = (target: DeviceHubTarget, path: string, params?: Record<string, string>) => {
   const search = params ? `?${new URLSearchParams(params).toString()}` : "";

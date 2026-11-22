@@ -83,7 +83,7 @@ export function RevylDeviceHostEditor(props: {
   );
 
   const limit = (
-    field: "maxSessions" | "maxSessionMinutes",
+    field: "maxSessions" | "maxSessionMinutes" | "macIdleMinutes",
     label: string,
     min: number,
     max: number,
@@ -205,6 +205,47 @@ export function RevylDeviceHostEditor(props: {
                 for Android. A platform without an app URL is not offered.
               </T>
             </p>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draft.macs}
+                disabled={props.busy}
+                onChange={(event) => {
+                  const macs = event.target.checked;
+                  setDraft((current) => ({ ...current, macs }));
+                }}
+              />
+              <span>{gt("Offer persistent Revyl Macs")}</span>
+            </label>
+            {draft.macs ? (
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <label className="block space-y-1.5">
+                  <span>{gt("Mac snapshot")}</span>
+                  <Input
+                    value={draft.macSnapshot ?? ""}
+                    placeholder={gt("Clean Mac")}
+                    disabled={props.busy}
+                    onChange={(event) => {
+                      const value = event.target.value.trim();
+                      setDraft((current) => {
+                        const next = { ...current };
+                        delete next.macSnapshot;
+                        return value ? { ...next, macSnapshot: value } : next;
+                      });
+                    }}
+                  />
+                </label>
+                {limit("macIdleMinutes", gt("Idle minutes"), 5, 240)}
+              </div>
+            ) : null}
+            {draft.macs ? (
+              <p className="text-xs text-muted-foreground">
+                <T>
+                  A Mac keeps its disk when it stops. It stops when its device closes, or after the
+                  idle minutes with nobody opening or typing into it, and starts again when opened.
+                </T>
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm">
               {limit("maxSessions", gt("Sessions at once"), 1, 10)}
               {limit("maxSessionMinutes", gt("Session minutes"), 5, 120)}

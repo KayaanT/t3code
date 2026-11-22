@@ -17,7 +17,8 @@ import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { cn } from "~/lib/utils";
 import { m, type MessageResolver } from "~/i18n/messages";
 
-const platformName = (platform: DevicePlatform) => (platform === "ios" ? "iOS" : "Android");
+const platformName = (platform: DevicePlatform) =>
+  platform === "macos" ? "macOS" : platform === "ios" ? "iOS" : "Android";
 
 const deviceHubDescription = msg(
   "Enable this environment to open simulators and emulators, whether they run here or on a remote device host.",

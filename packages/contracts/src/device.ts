@@ -5,8 +5,10 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { ThreadId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { SettingsSecretValue } from "./settingsSecretValue.ts";
 
-export const DevicePlatform = Schema.Literals(["ios", "android"]);
+export const DevicePlatform = Schema.Literals(["ios", "android", "macos"]);
 export type DevicePlatform = typeof DevicePlatform.Type;
+/** Phones and tablets, which agent-device drives; Macs are watched and driven through their screen. */
+export type MobileDevicePlatform = Exclude<DevicePlatform, "macos">;
 
 export const DeviceHostId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 export type DeviceHostId = typeof DeviceHostId.Type;
@@ -126,6 +128,14 @@ export const RevylDeviceHostConfig = Schema.Struct({
   /** The app a new session installs; the Revyl plugin requires one per platform. */
   iosAppUrl: Schema.optional(RevylAppUrl),
   androidAppUrl: Schema.optional(RevylAppUrl),
+  /** Lists the organization's persistent Revyl Macs, which keep their disk when they stop. */
+  macs: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
+  /** A new Mac starts from this snapshot of the organization, by id or name, or clean when empty. */
+  macSnapshot: Schema.optional(TrimmedString.check(Schema.isMaxLength(128))),
+  /** A running Mac nobody watches or types into stops, saving its disk, after this long. */
+  macIdleMinutes: Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 240 })).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(15)),
+  ),
 });
 export type RevylDeviceHostConfig = typeof RevylDeviceHostConfig.Type;
 

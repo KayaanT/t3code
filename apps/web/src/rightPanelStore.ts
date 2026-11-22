@@ -3,7 +3,13 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, RunId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  type DevicePlatform,
+  EnvironmentId,
+  RunId,
+  ThreadId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { msg } from "gt-react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -40,7 +46,7 @@ export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code";
 export interface DeviceTabTarget {
   hostId: string;
   deviceId: string;
-  platform: "ios" | "android";
+  platform: DevicePlatform;
   name: string;
 }
 

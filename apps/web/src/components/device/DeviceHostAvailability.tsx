@@ -1,7 +1,10 @@
-import type { DevicePlatformAvailability } from "@t3tools/contracts";
+import type { DevicePlatform, DevicePlatformAvailability } from "@t3tools/contracts";
 import { useGT } from "gt-react";
 import { Check, Minus } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+
+const platformLabel = (platform: DevicePlatform) =>
+  platform === "macos" ? "macOS" : platform === "ios" ? "iOS" : "Android";
 
 export function DeviceHostAvailability({
   platforms,
@@ -17,16 +20,16 @@ export function DeviceHostAvailability({
             {platform.available ? <Check className="size-3" /> : <Minus className="size-3" />}
             {platform.available
               ? gt("{platform} available", {
-                  platform: platform.platform === "ios" ? "iOS" : "Android",
+                  platform: platformLabel(platform.platform),
                 })
               : gt("{platform} unavailable", {
-                  platform: platform.platform === "ios" ? "iOS" : "Android",
+                  platform: platformLabel(platform.platform),
                 })}
           </TooltipTrigger>
           <TooltipPopup>
             {platform.reason ??
               gt("{platform} available", {
-                platform: platform.platform === "ios" ? "iOS" : "Android",
+                platform: platformLabel(platform.platform),
               })}
           </TooltipPopup>
         </Tooltip>

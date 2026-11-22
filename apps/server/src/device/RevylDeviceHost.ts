@@ -1,8 +1,7 @@
 /**
- * Alpha: Revyl cloud devices, opened through agent-device's Revyl plugin on a daemon per session so
- * agents drive the same session. The panel's serve-sim requests are answered from Revyl's WHEP
- * stream and device proxy. A crashed server's session ends when its daemon's lease expires, or when
- * the host next starts and stops the daemons it left behind.
+ * Alpha: Revyl cloud devices on an agent-device daemon per session, which agents drive, with the
+ * panel served from Revyl's WHEP stream. Persistent Revyl Macs open by create or start and close by
+ * stop, which saves their disk; they are watched and driven through Revyl screen actions only.
  */
 import {
   DeviceBootError,
@@ -11,9 +10,11 @@ import {
   DeviceOperationError,
   type DevicePlatform,
   type DevicePlatformAvailability,
+  type MobileDevicePlatform,
   type RevylDeviceHostConfig,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
@@ -66,6 +67,12 @@ const IOS_MSG_ORIENTATION = 0x07;
 const IOS_TAG_SCREEN_CONFIG = 0x82;
 const IOS_TAG_INPUT_ADMITTED = 0x83;
 
+const MAC_CATALOG_ID = "revyl:macos";
+const MAC_START_ATTEMPTS = 8;
+const MAC_START_RETRY = Duration.seconds(15);
+const MAC_POLL = Duration.seconds(3);
+const MAC_IDLE_CHECK = Duration.minutes(1);
+
 const IceServer = Schema.Struct({
   urls: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
   username: Schema.optionalKey(Schema.String),
@@ -77,6 +84,31 @@ const decodeWorkerConnection = Schema.decodeUnknownEffect(
     whep_url: Schema.NullOr(Schema.String),
     ice_servers: Schema.optional(Schema.NullOr(Schema.Array(IceServer))),
   }),
+);
+const PersistentComputer = Schema.Struct({
+  computer_id: Schema.String,
+  state: Schema.String,
+  run_session_id: Schema.optional(Schema.NullOr(Schema.String)),
+});
+const decodePersistentComputers = Schema.decodeUnknownEffect(
+  Schema.Struct({ computers: Schema.Array(PersistentComputer) }),
+);
+const decodeComputer = Schema.decodeUnknownEffect(
+  Schema.Struct({ persistent: Schema.optional(Schema.NullOr(PersistentComputer)) }),
+);
+const decodeScreenFeed = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    whep_url: Schema.optional(Schema.NullOr(Schema.String)),
+    screen_width: Schema.optional(Schema.NullOr(Schema.Number)),
+    screen_height: Schema.optional(Schema.NullOr(Schema.Number)),
+  }),
+);
+const decodeViewerIceServers = Schema.decodeUnknownEffect(
+  Schema.Struct({ ice_servers: Schema.Array(IceServer) }),
+);
+const decodeScreenshot = Schema.decodeUnknownEffect(Schema.Struct({ png: Schema.String }));
+const decodeApiError = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ detail: Schema.String })),
 );
 const decodeHealth = Schema.decodeUnknownEffect(
   Schema.Struct({
@@ -142,7 +174,7 @@ interface PanelScreen extends Screen {
 interface Lease {
   /** Revyl's workflow run id, which is also the device id T3 lists. */
   readonly runId: string;
-  readonly platform: DevicePlatform;
+  readonly platform: MobileDevicePlatform;
   readonly session: string;
   /** agent-device state of the lease's own daemon. */
   readonly dir: string;
@@ -159,6 +191,39 @@ interface Lease {
   /** Open WebRTC views, by the client's session id, to their WHEP resource. */
   readonly views: Map<string, string>;
 }
+
+/** A persistent Revyl Mac this server started or attached to, while it runs. */
+interface Mac {
+  /** The computer's id, which stays the same across starts and is the device id T3 lists. */
+  readonly computerId: string;
+  readonly platform: "macos";
+  readonly apiKey: string;
+  readonly screen: PanelScreen;
+  /** Read after each start: a start opens a new run session with a new stream. */
+  readonly whepUrl: string;
+  readonly iceServers: ReadonlyArray<typeof IceServer.Type>;
+  readonly views: Map<string, string>;
+  /** When someone last opened its screen or sent it input. */
+  activeAt: number;
+}
+
+/** A Revyl screen action: a click, drag, key chord, or typed text, in the Mac's screen pixels. */
+export type MacScreenAction =
+  | {
+      readonly action: "click";
+      readonly x: number;
+      readonly y: number;
+      readonly button?: "right";
+    }
+  | {
+      readonly action: "drag";
+      readonly start_x: number;
+      readonly start_y: number;
+      readonly end_x: number;
+      readonly end_y: number;
+    }
+  | { readonly action: "key"; readonly keys: string }
+  | { readonly action: "type"; readonly text: string };
 
 type PanelInput =
   | { readonly kind: "act"; readonly action: string; readonly body?: unknown }
@@ -188,6 +253,24 @@ export const touchAction = (start: TouchPoint, end: TouchPoint, heldMs: number, 
   return heldMs >= LONG_PRESS_MS
     ? ({ action: "longpress", body: { ...from, duration_ms: Math.round(heldMs) } } as const)
     : ({ action: "tap", body: from } as const);
+};
+
+/** A panel touch on a Mac: a click, a right click for a long press, or a drag. */
+export const macTouchAction = (
+  start: TouchPoint,
+  end: TouchPoint,
+  heldMs: number,
+  screen: Screen,
+): MacScreenAction => {
+  const gesture = touchAction(start, end, heldMs, screen);
+  switch (gesture.action) {
+    case "drag":
+      return { action: "drag", ...gesture.body };
+    case "longpress":
+      return { action: "click", x: gesture.body.x, y: gesture.body.y, button: "right" };
+    case "tap":
+      return { action: "click", ...gesture.body };
+  }
 };
 
 const BUTTON_ACTIONS: Readonly<Record<string, string>> = { home: "go_home", back: "back" };
@@ -227,6 +310,55 @@ const HID_TEXT = new Map<number, readonly [string, string]>([
 /** The text a key types on a US layout, or null for a key that types nothing. */
 const hidText = (usage: number, shifted: boolean) => HID_TEXT.get(usage)?.[shifted ? 1 : 0] ?? null;
 
+const MAC_MODIFIERS: Readonly<Record<number, "ctrl" | "shift" | "alt" | "cmd">> = {
+  0xe0: "ctrl",
+  0xe1: "shift",
+  0xe2: "alt",
+  0xe3: "cmd",
+  0xe4: "ctrl",
+  0xe5: "shift",
+  0xe6: "alt",
+  0xe7: "cmd",
+};
+const MAC_NAMED_KEYS = new Map<number, string>([
+  [0x28, "enter"],
+  [0x58, "enter"],
+  [0x29, "escape"],
+  [0x2a, "backspace"],
+  [0x2b, "tab"],
+  [0x4a, "home"],
+  [0x4b, "pageup"],
+  [0x4c, "delete"],
+  [0x4d, "end"],
+  [0x4e, "pagedown"],
+  [0x4f, "right"],
+  [0x50, "left"],
+  [0x51, "down"],
+  [0x52, "up"],
+  ...Array.from({ length: 12 }, (_, index): readonly [number, string] => [
+    0x3a + index,
+    `f${index + 1}`,
+  ]),
+]);
+
+const isMacModifier = (usage: number) => MAC_MODIFIERS[usage] !== undefined;
+
+/**
+ * The screen action one key press becomes on a Mac, given the modifier keys held: text for a plain
+ * or shifted key, and a chord such as `cmd+c` or `shift+tab` for a shortcut or a named key.
+ */
+export const macKeyAction = (usage: number, held: ReadonlySet<number>): MacScreenAction | null => {
+  const modifiers = [...new Set([...held].flatMap((key) => MAC_MODIFIERS[key] ?? []))];
+  const named = MAC_NAMED_KEYS.get(usage);
+  if (named) return { action: "key", keys: [...modifiers, named].join("+") };
+  const shifted = modifiers.includes("shift");
+  const text = hidText(usage, shifted);
+  if (text === null) return null;
+  if (modifiers.every((modifier) => modifier === "shift")) return { action: "type", text };
+  const plain = hidText(usage, false)!;
+  return { action: "key", keys: [...modifiers, plain === " " ? "space" : plain].join("+") };
+};
+
 /** The orientation Revyl can rotate to that is nearest the one the panel asked for. */
 export const revylOrientation = (requested: Orientation, precise: boolean) => {
   if (precise)
@@ -248,9 +380,9 @@ const tagged = (tag: number, payload?: unknown) => {
   return out;
 };
 
-const catalogId = (platform: DevicePlatform) => `revyl:${platform}`;
-const platformName = (platform: DevicePlatform) => (platform === "ios" ? "iOS" : "Android");
-const deviceKind = (platform: DevicePlatform) =>
+const catalogId = (platform: MobileDevicePlatform) => `revyl:${platform}`;
+const platformName = (platform: MobileDevicePlatform) => (platform === "ios" ? "iOS" : "Android");
+const deviceKind = (platform: MobileDevicePlatform) =>
   platform === "ios" ? "iOS simulator" : "Android emulator";
 const RUN_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
@@ -270,6 +402,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
   const hostDir = path.join(server.stateDir, "device", "revyl", hostId);
   const agentHome = path.join(hostDir, "home");
   const leases = new Map<string, Lease>();
+  const macs = new Map<string, Mac>();
   let starting = 0;
   // Bumped by every stop, so an open that finishes after one ends its session instead of keeping it.
   let stops = 0;
@@ -283,7 +416,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
     parsedApi?.protocol === "https:" && parsedApi.href === `${parsedApi.origin}/`
       ? parsedApi.origin
       : null;
-  const appUrls: Readonly<Record<DevicePlatform, string | undefined>> = {
+  const appUrls: Readonly<Record<MobileDevicePlatform, string | undefined>> = {
     ios: config.iosAppUrl,
     android: config.androidAppUrl,
   };
@@ -344,6 +477,206 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
       Effect.map((buffer) => new Uint8Array(buffer)),
       Effect.scoped,
     );
+
+  const computerRoute = (computerId: string, action = "") =>
+    `/api/v1/computer-runs/${encodeURIComponent(computerId)}${action}`;
+
+  const readComputer = (apiKey: string, computerId: string) =>
+    revylJson(apiKey, "GET", computerRoute(computerId)).pipe(
+      Effect.flatMap(decodeComputer),
+      Effect.map(({ persistent }) => persistent ?? null),
+    );
+
+  /** The organization's persistent Macs, or null when Revyl did not list them. */
+  const listMacs = currentApiKey.pipe(
+    Effect.flatMap((apiKey) =>
+      revylJson(apiKey, "GET", "/api/v1/computer-runs/persistent?limit=50"),
+    ),
+    Effect.flatMap(decodePersistentComputers),
+    Effect.map(({ computers }) => computers),
+    Effect.tapError((cause) => Effect.logDebug("Revyl did not list persistent Macs", { cause })),
+    Effect.orElseSucceed(() => null),
+  );
+
+  const createMac = Effect.fn("RevylDeviceHost.createMac")(function* (apiKey: string) {
+    const computerId = yield* Effect.sync(() => SecureRandom.uuidV4Unsafe());
+    yield* revylJson(apiKey, "POST", "/api/v1/computer-runs", {
+      computer_session_id: computerId,
+      os: "macos",
+      persistent: true,
+      ...(config.macSnapshot ? { from_snapshot: config.macSnapshot } : {}),
+    });
+    yield* Effect.logInfo("Created a Revyl Mac", { computerId });
+    return computerId;
+  });
+
+  /**
+   * Starts a stopped Mac. Revyl refuses a start while the last run is still ending, so that
+   * conflict is retried; a Mac that is already starting or running needs no start.
+   */
+  const startMac = Effect.fn("RevylDeviceHost.startMac")(function* (
+    apiKey: string,
+    computerId: string,
+  ) {
+    for (let attempt = 1; ; attempt++) {
+      const answer = yield* http
+        .execute(
+          HttpClientRequest.post(`${apiOrigin}${computerRoute(computerId, "/start")}`).pipe(
+            HttpClientRequest.bearerToken(apiKey),
+            HttpClientRequest.bodyJsonUnsafe({}),
+          ),
+        )
+        .pipe(
+          Effect.flatMap((response) =>
+            response.text.pipe(Effect.map((text) => ({ status: response.status, text }))),
+          ),
+          Effect.scoped,
+          Effect.timeout(REQUEST_TIMEOUT),
+        );
+      if (answer.status < 300) return;
+      const detail = Option.match(decodeApiError(answer.text), {
+        onNone: () => `status ${answer.status}`,
+        onSome: (error) => error.detail,
+      });
+      const current = yield* readComputer(apiKey, computerId).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      if (current?.state === "starting" || current?.state === "running") return;
+      if (detail !== "run_conflict" || attempt >= MAC_START_ATTEMPTS)
+        return yield* unavailable(
+          detail === "saved_disk_expired"
+            ? "This Mac's saved disk has expired. Delete it and open a new Revyl Mac."
+            : `Revyl did not start the Mac (${detail}).`,
+        );
+      yield* Effect.sleep(MAC_START_RETRY);
+    }
+  });
+
+  /** Waits for the Mac to run, then reads its current run's stream; the URL is never logged. */
+  const attachMac = Effect.fn("RevylDeviceHost.attachMac")(function* (
+    apiKey: string,
+    computerId: string,
+  ) {
+    const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(OPEN_TIMEOUT);
+    const waitFor = Effect.fn("RevylDeviceHost.waitForMac")(function* <A, E>(
+      read: Effect.Effect<A | null, E>,
+      what: string,
+    ) {
+      while ((yield* Clock.currentTimeMillis) < deadline) {
+        const value = yield* read.pipe(Effect.orElseSucceed(() => null));
+        if (value !== null) return value;
+        yield* Effect.sleep(MAC_POLL);
+      }
+      return yield* unavailable(`The Revyl Mac did not ${what} in time.`);
+    });
+    const runSessionId = yield* waitFor(
+      readComputer(apiKey, computerId).pipe(
+        Effect.map((computer) =>
+          computer?.state === "running" ? (computer.run_session_id ?? null) : null,
+        ),
+      ),
+      "start",
+    );
+    const feed = yield* waitFor(
+      revylJson(
+        apiKey,
+        "GET",
+        `/api/v1/execution/device-sessions/${encodeURIComponent(runSessionId)}?include_computers=true`,
+      ).pipe(
+        Effect.flatMap(decodeScreenFeed),
+        Effect.map((feed) => (feed.whep_url ? { ...feed, whep_url: feed.whep_url } : null)),
+      ),
+      "publish its screen",
+    );
+    const iceServers = yield* revylJson(
+      apiKey,
+      "GET",
+      "/api/v1/execution/streaming/viewer-ice-servers",
+    ).pipe(
+      Effect.flatMap(decodeViewerIceServers),
+      Effect.map(({ ice_servers }) => ice_servers),
+      Effect.orElseSucceed(() => []),
+    );
+    const width = feed.screen_width ?? 1280;
+    const height = feed.screen_height ?? 800;
+    const mac: Mac = {
+      computerId,
+      platform: "macos",
+      apiKey,
+      screen: { width, height, orientation: width > height ? "landscape_left" : "portrait" },
+      whepUrl: feed.whep_url,
+      iceServers,
+      views: new Map(),
+      activeAt: yield* Clock.currentTimeMillis,
+    };
+    return mac;
+  });
+
+  /** Stops a Mac, which saves its disk; a stop that fails leaves the run to its lifetime limit. */
+  const stopMac = (apiKey: string, computerId: string) =>
+    revylJson(apiKey, "POST", computerRoute(computerId, "/stop")).pipe(
+      Effect.andThen(Effect.logInfo("Stopped a Revyl Mac", { computerId })),
+      Effect.tapError((cause) =>
+        Effect.logWarning("Could not stop a Revyl Mac", { computerId, cause }),
+      ),
+      Effect.ignore,
+    );
+
+  const releaseMac = (mac: Mac) =>
+    Effect.suspend(() => {
+      macs.delete(mac.computerId);
+      return stopMac(mac.apiKey, mac.computerId);
+    });
+
+  const macIdleKey = (computerId: string) => `mac:${computerId}`;
+
+  const openMac = Effect.fn("RevylDeviceHost.openMac")(
+    function* (device: DeviceHost.HostDevice) {
+      const apiKey = yield* currentApiKey;
+      const stopsAtOpen = stops;
+      const computerId = device.id === MAC_CATALOG_ID ? yield* createMac(apiKey) : device.id;
+      if (device.id !== MAC_CATALOG_ID) yield* startMac(apiKey, computerId);
+      const mac = yield* attachMac(apiKey, computerId).pipe(
+        Effect.tapError(() => stopMac(apiKey, computerId)),
+      );
+      if (stops !== stopsAtOpen) {
+        yield* stopMac(apiKey, computerId);
+        return yield* unavailable("Device support stopped while the Mac was opening.");
+      }
+      macs.set(computerId, mac);
+      const idleMs = config.macIdleMinutes * 60_000;
+      yield* FiberMap.run(
+        maxAge,
+        macIdleKey(computerId),
+        Effect.gen(function* () {
+          while (true) {
+            yield* Effect.sleep(MAC_IDLE_CHECK);
+            if ((yield* Clock.currentTimeMillis) - mac.activeAt < idleMs) continue;
+            yield* Effect.logInfo("Stopping an idle Revyl Mac", { computerId });
+            return yield* releaseMac(mac);
+          }
+        }),
+      );
+      return computerId;
+    },
+    Effect.mapError((error) =>
+      error._tag === "DeviceHostUnavailableError"
+        ? error
+        : unavailable("Revyl did not answer.", error),
+    ),
+  );
+
+  const macScreenshot = (mac: Mac) =>
+    revylJson(mac.apiKey, "GET", computerRoute(mac.computerId, "/screen/screenshot")).pipe(
+      Effect.flatMap(decodeScreenshot),
+      Effect.map(({ png }) => new Uint8Array(Buffer.from(png, "base64"))),
+    );
+
+  const macAct = (mac: Mac, action: MacScreenAction) =>
+    revylJson(mac.apiKey, "POST", computerRoute(mac.computerId, "/screen/actions"), {
+      action,
+      screenshot: false,
+    });
 
   const agentEnvironment = (apiKey: string, stateDir: string): NodeJS.ProcessEnv => ({
     ...Object.fromEntries(
@@ -439,7 +772,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
 
   const reserveSlot = slotLock.withPermit(
     Effect.suspend(() => {
-      if (leases.size + starting >= config.maxSessions) {
+      if (leases.size + macs.size + starting >= config.maxSessions) {
         return Effect.fail(
           unavailable(
             `${config.label} is limited to ${config.maxSessions} ${config.maxSessions === 1 ? "device" : "devices"} at once. Close one in the Device panel first.`,
@@ -559,36 +892,64 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
   const leaseFor = (deviceId: string | null) =>
     deviceId === null ? Option.none<Lease>() : Option.fromNullishOr(leases.get(deviceId));
 
-  const devices: DeviceHost.DeviceOperations = {
-    list: Effect.sync(() => ({
-      devices: [
-        ...(["ios", "android"] as const)
-          .filter((platform) => appUrls[platform] !== undefined)
-          .map((platform): DeviceHost.HostDevice => ({
-            id: catalogId(platform),
-            platform,
-            name: `Revyl ${deviceKind(platform)}`,
-            version: platformName(platform),
-            booted: false,
-            physical: false,
-          })),
-        ...[...leases.values()].map((lease): DeviceHost.HostDevice => ({
-          id: lease.runId,
-          platform: lease.platform,
-          name: `Revyl ${deviceKind(lease.platform)} ${lease.runId.slice(0, 8)}`,
-          version: platformName(lease.platform),
-          booted: true,
-          physical: false,
-        })),
-      ],
-      detail: undefined,
+  const phoneDevices = () => [
+    ...(["ios", "android"] as const)
+      .filter((platform) => appUrls[platform] !== undefined)
+      .map((platform): DeviceHost.HostDevice => ({
+        id: catalogId(platform),
+        platform,
+        name: `Revyl ${deviceKind(platform)}`,
+        version: platformName(platform),
+        booted: false,
+        physical: false,
+      })),
+    ...[...leases.values()].map((lease): DeviceHost.HostDevice => ({
+      id: lease.runId,
+      platform: lease.platform,
+      name: `Revyl ${deviceKind(lease.platform)} ${lease.runId.slice(0, 8)}`,
+      version: platformName(lease.platform),
+      booted: true,
+      physical: false,
     })),
+  ];
+
+  const devices: DeviceHost.DeviceOperations = {
+    list: Effect.gen(function* () {
+      const listedMacs = config.macs ? yield* listMacs : [];
+      return {
+        devices: [
+          ...phoneDevices(),
+          ...(listedMacs === null || !config.macs
+            ? []
+            : [
+                {
+                  id: MAC_CATALOG_ID,
+                  platform: "macos" as const,
+                  name: "New Revyl Mac",
+                  version: "macOS",
+                  booted: false,
+                  physical: false,
+                },
+                ...listedMacs.map((computer): DeviceHost.HostDevice => ({
+                  id: computer.computer_id,
+                  platform: "macos",
+                  name: `Revyl Mac ${computer.computer_id.slice(0, 8)}`,
+                  version: "macOS",
+                  booted: macs.has(computer.computer_id),
+                  physical: false,
+                })),
+              ]),
+        ],
+        detail: undefined,
+        ...(listedMacs === null ? { incompletePlatforms: ["macos" as const] } : {}),
+      };
+    }),
     boot: (device, context) =>
-      leases.has(device.id)
+      leases.has(device.id) || macs.has(device.id)
         ? Effect.succeed(device.id)
         : Effect.acquireUseRelease(
             reserveSlot,
-            () => openLease(device, context),
+            () => (device.platform === "macos" ? openMac(device) : openLease(device, context)),
             () => Effect.sync(() => void starting--),
           ).pipe(
             Effect.mapError(
@@ -603,36 +964,52 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
             ),
           ),
     attach: () => Effect.void,
-    shutdown: (device) =>
-      Option.match(leaseFor(device.id), {
+    shutdown: (device) => {
+      const mac = macs.get(device.id);
+      if (mac)
+        return FiberMap.remove(maxAge, macIdleKey(mac.computerId)).pipe(
+          Effect.andThen(releaseMac(mac)),
+        );
+      if (device.platform === "macos")
+        return currentApiKey.pipe(
+          Effect.flatMap((apiKey) => stopMac(apiKey, device.id)),
+          Effect.ignore,
+        );
+      return Option.match(leaseFor(device.id), {
         onNone: () => Effect.void,
         onSome: (lease) =>
           FiberMap.remove(maxAge, lease.runId).pipe(Effect.andThen(releaseLease(lease))),
-      }),
-    screenshot: (device) =>
-      Option.match(leaseFor(device.id), {
+      });
+    },
+    screenshot: (device) => {
+      const mac = macs.get(device.id);
+      if (mac) return macScreenshot(mac).pipe(Effect.mapError(operationError("screenshot")));
+      return Option.match(leaseFor(device.id), {
         onNone: () =>
           Effect.fail(operationError("screenshot")(new Error("The Revyl session has ended"))),
         onSome: (lease) => screenshotOf(lease).pipe(Effect.mapError(operationError("screenshot"))),
-      }),
+      });
+    },
     agentEndpoint: (deviceId) =>
-      Option.match(leaseFor(deviceId), {
-        onNone: () => Effect.fail(unavailable("This Revyl session has ended.")),
-        onSome: (lease) =>
-          Effect.succeed({
-            ...lease.daemon,
-            agentDeviceId: null,
-            session: lease.session,
-            stateDir: lease.dir,
-            installDirectory: lease.installDirectory,
+      macs.has(deviceId)
+        ? Effect.fail(unavailable("Device tools cannot drive a Revyl Mac."))
+        : Option.match(leaseFor(deviceId), {
+            onNone: () => Effect.fail(unavailable("This Revyl session has ended.")),
+            onSome: (lease) =>
+              Effect.succeed({
+                ...lease.daemon,
+                agentDeviceId: null,
+                session: lease.session,
+                stateDir: lease.dir,
+                installDirectory: lease.installDirectory,
+              }),
           }),
-      }),
     endsDevices: true,
   };
 
   /** Starts a WebRTC view: the client's JSON offer goes to Revyl's WHEP endpoint as SDP. */
   const offer = Effect.fn("RevylDeviceHost.offer")(function* (
-    lease: Lease,
+    lease: Lease | Mac,
     request: HttpServerRequest.HttpServerRequest,
   ) {
     const { sdp, sessionId } = yield* request.json.pipe(Effect.flatMap(decodeOffer));
@@ -665,7 +1042,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
   });
 
   const closeView = Effect.fn("RevylDeviceHost.closeView")(function* (
-    lease: Lease,
+    lease: Lease | Mac,
     request: HttpServerRequest.HttpServerRequest,
   ) {
     const { sessionId } = yield* request.json.pipe(Effect.flatMap(decodeClose));
@@ -811,6 +1188,80 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
     return HttpServerResponse.empty();
   });
 
+  /**
+   * serve-sim's input socket for a Mac. Touches become clicks, right clicks for long presses, and
+   * drags; keys become typed text, or chords for shortcuts and named keys. Requests go one at a
+   * time, in order, and keys typed while one is in flight go together.
+   */
+  const macInput = Effect.fn("RevylDeviceHost.macInput")(function* (
+    mac: Mac,
+    request: HttpServerRequest.HttpServerRequest,
+  ) {
+    const socket = yield* request.upgrade;
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const { write } = yield* socket.writer;
+        const { pull } = yield* socket.reader;
+        const queued = yield* Queue.unbounded<MacScreenAction>();
+        const held: Array<MacScreenAction> = [];
+        const next = Effect.gen(function* () {
+          let action = held.shift() ?? (yield* Queue.take(queued));
+          if (action.action === "type") {
+            held.push(...(yield* Queue.clear(queued)));
+            const typing = held.findIndex((later) => later.action !== "type");
+            const text = [action, ...held.splice(0, typing === -1 ? held.length : typing)]
+              .flatMap((typed) => (typed.action === "type" ? [typed.text] : []))
+              .join("");
+            action = { action: "type", text };
+          }
+          yield* macAct(mac, action).pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Revyl did not take Mac input", { action: action.action, cause }),
+            ),
+            Effect.ignore,
+          );
+        });
+        yield* Effect.forkScoped(Effect.forever(next));
+
+        yield* write(tagged(IOS_TAG_INPUT_ADMITTED));
+        yield* write(tagged(IOS_TAG_SCREEN_CONFIG, mac.screen));
+        let touch: { readonly start: TouchPoint; readonly at: number } | null = null;
+        const modifiers = new Set<number>();
+        while (true) {
+          for (const frame of yield* pull) {
+            if (typeof frame === "string" || frame.length < 2) continue;
+            const json = new TextDecoder().decode(frame.subarray(1));
+            const now = yield* Clock.currentTimeMillis;
+            let action: MacScreenAction | null = null;
+            if (frame[0] === IOS_MSG_KEY) {
+              const key = decodeKey(json);
+              if (Option.isNone(key)) continue;
+              const { type, usage } = key.value;
+              if (isMacModifier(usage)) {
+                if (type === "down") modifiers.add(usage);
+                else modifiers.delete(usage);
+                continue;
+              }
+              if (type === "down") action = macKeyAction(usage, modifiers);
+            } else if (frame[0] === IOS_MSG_TOUCH) {
+              const event = decodeTouch(json);
+              if (Option.isNone(event)) continue;
+              if (event.value.type === "begin") touch = { start: event.value, at: now };
+              if (event.value.type === "end" && touch) {
+                action = macTouchAction(touch.start, event.value, now - touch.at, mac.screen);
+                touch = null;
+              }
+            }
+            if (!action) continue;
+            mac.activeAt = now;
+            yield* Queue.offer(queued, action);
+          }
+        }
+      }),
+    ).pipe(Effect.ignoreCause);
+    return HttpServerResponse.empty();
+  });
+
   const serve: NonNullable<DeviceHost.DeviceHostReady["serve"]> = Effect.fn(
     "RevylDeviceHost.serve",
   )(function* (request, hubPath, search) {
@@ -819,11 +1270,13 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
     // Device ids are Revyl run ids, which URL encoding leaves unchanged.
     const deviceId = stream?.[1] ?? webrtc?.[1] ?? search.get("device");
     const notFound = HttpServerResponse.text("Not Found", { status: 404 });
-    const lease = leaseFor(deviceId);
-    if (Option.isNone(lease)) return notFound;
+    const mac = deviceId === null ? undefined : macs.get(deviceId);
+    const lease = Option.getOrUndefined(leaseFor(deviceId));
+    const target = mac ?? lease;
+    if (!target) return notFound;
     if (hubPath === API_PATH)
       return HttpServerResponse.jsonUnsafe({
-        streamSettings: { transport: "webrtc", iceServers: lease.value.iceServers },
+        streamSettings: { transport: "webrtc", iceServers: target.iceServers },
       });
     // The client asks for AVCC or MJPEG first; this answer moves it to WebRTC.
     if (stream)
@@ -831,9 +1284,10 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
         { error: "stream_transport_locked", transport: "webrtc" },
         { status: 409 },
       );
+    if (mac) mac.activeAt = yield* Clock.currentTimeMillis;
     const answer =
       hubPath === SCREENSHOT_PATH
-        ? screenshotOf(lease.value).pipe(
+        ? (mac ? macScreenshot(mac) : screenshotOf(lease!)).pipe(
             Effect.map((png) =>
               HttpServerResponse.uint8Array(png, {
                 contentType: "image/png",
@@ -842,11 +1296,13 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
             ),
           )
         : webrtc?.[2] === "offer"
-          ? offer(lease.value, request)
+          ? offer(target, request)
           : webrtc?.[2] === "close"
-            ? closeView(lease.value, request)
+            ? closeView(target, request)
             : hubPath === INPUT_PATH
-              ? input(lease.value, request)
+              ? mac
+                ? macInput(mac, request)
+                : input(lease!, request)
               : Effect.succeed(notFound);
     return yield* answer.pipe(
       Effect.catchCause((cause) =>
@@ -916,18 +1372,22 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
     stops++;
     yield* FiberMap.clear(maxAge);
     yield* Effect.forEach([...leases.values()], releaseLease, { discard: true, concurrency: 4 });
+    yield* Effect.forEach([...macs.values()], releaseMac, { discard: true, concurrency: 4 });
   }).pipe(Effect.ignore);
   yield* Effect.addFinalizer(() => stopAll);
 
   const platformAvailability = (platform: DevicePlatform) =>
     currentApiKey.pipe(
       Effect.map((): DevicePlatformAvailability =>
-        appUrls[platform]
+        (platform === "macos" ? config.macs : appUrls[platform])
           ? { platform, available: true }
           : {
               platform,
               available: false,
-              reason: `Set an ${platformName(platform)} app URL for ${config.label}.`,
+              reason:
+                platform === "macos"
+                  ? `Turn on Revyl Macs for ${config.label}.`
+                  : `Set an ${platformName(platform)} app URL for ${config.label}.`,
             },
       ),
       Effect.catch((error) =>
@@ -944,7 +1404,11 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
       id: hostId,
       label: config.label,
       kind: "revyl" as const,
-      platforms: [yield* platformAvailability("ios"), yield* platformAvailability("android")],
+      platforms: [
+        yield* platformAvailability("ios"),
+        yield* platformAvailability("android"),
+        yield* platformAvailability("macos"),
+      ],
       hubInstalled: true,
       agentDeviceInstalled: true,
     };

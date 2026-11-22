@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DeviceHostUnavailableError,
   DeviceId,
+  type DevicePlatform,
   EnvironmentId,
   ProviderInstanceId,
   ThreadId,
@@ -369,7 +370,7 @@ describe("device targeting across hosts", () => {
     },
     devices: [device, macIphone, localPixel, macPixel],
   };
-  const session = (hostId: string, deviceId: string, platform: "ios" | "android") => ({
+  const session = (hostId: string, deviceId: string, platform: DevicePlatform) => ({
     threadId,
     hostId,
     deviceId: DeviceId.make(deviceId),

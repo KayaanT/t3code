@@ -1,7 +1,7 @@
 import type { DevicePlatform } from "@t3tools/contracts";
 
 export interface DeviceShapeProfile {
-  readonly id: "ios-phone" | "ios-tablet" | "android-phone" | "android-tablet";
+  readonly id: "ios-phone" | "ios-tablet" | "android-phone" | "android-tablet" | "mac-display";
   readonly bezel: number;
   readonly bodyRadius: number;
   readonly screenRadius: number;
@@ -97,6 +97,26 @@ export const ANDROID_PHONE_SHAPE: DeviceShapeProfile = {
   },
 };
 
+/** A Mac's screen as a thin, nearly square display with no buttons or cameras. */
+const MAC_DISPLAY_SHAPE: DeviceShapeProfile = {
+  id: "mac-display",
+  bezel: 0.02,
+  bodyRadius: 0.02,
+  screenRadius: 0.008,
+  depth: 0.03,
+  backColor: 0x2b2f36,
+  buttons: [],
+  camera: {
+    width: 0,
+    height: 0,
+    insetX: 0,
+    insetY: 0,
+    lensRadius: 0,
+    lenses: [],
+    flash: null,
+  },
+};
+
 const ANDROID_TABLET_SHAPE: DeviceShapeProfile = {
   ...IOS_TABLET_SHAPE,
   id: "android-tablet",
@@ -112,6 +132,7 @@ export function resolveDeviceShape(options: {
   const namedTablet = /\b(ipad|tablet)\b/i.test(name);
   const namedPhone = /\b(iphone|phone)\b/i.test(name);
   const tablet = namedTablet || (!namedPhone && options.portraitAspect >= 0.6);
+  if (options.platform === "macos") return MAC_DISPLAY_SHAPE;
   return options.platform === "ios"
     ? tablet
       ? IOS_TABLET_SHAPE

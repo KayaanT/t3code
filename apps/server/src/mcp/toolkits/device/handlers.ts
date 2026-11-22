@@ -172,6 +172,10 @@ const pickDevice = Effect.fn("handlers.pickDevice")(function* (
     const { deviceId, hostId } = input;
     const devices = yield* DeviceService.DeviceService;
     const located = yield* devices.locateDevice({ deviceId, hostId }).pipe(mapLocateErrors);
+    if (Option.isSome(located) && located.value.platform === "macos")
+      return yield* new DeviceToolUnavailableError({
+        reason: `${deviceId} is a Mac, which device tools cannot drive. Use a simulator or emulator.`,
+      });
     if (Option.isSome(located)) return located.value;
     const target =
       hostId === undefined
@@ -192,6 +196,7 @@ const pickDevice = Effect.fn("handlers.pickDevice")(function* (
   const candidates = state.devices.filter(
     (device) =>
       device.hostId === hostId &&
+      device.platform !== "macos" &&
       (input.platform === undefined || device.platform === input.platform),
   );
   if (candidates.length === 0) {

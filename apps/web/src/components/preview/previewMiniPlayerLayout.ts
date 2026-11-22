@@ -37,7 +37,10 @@ export function resolveDeviceMiniPlayerSourceSize(
 ): PreviewMiniPlayerSize {
   if (!screen) {
     const width = 1_000;
-    return { width, height: width / (platform === "ios" ? 9 / 19.5 : 9 / 20) };
+    return {
+      width,
+      height: width / (platform === "macos" ? 16 / 10 : platform === "ios" ? 9 / 19.5 : 9 / 20),
+    };
   }
   const landscape =
     screen.orientation === "landscape_left" || screen.orientation === "landscape_right";

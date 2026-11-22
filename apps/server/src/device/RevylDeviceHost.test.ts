@@ -31,6 +31,8 @@ const config = (overrides: Partial<RevylDeviceHostConfig> = {}): RevylDeviceHost
   apiKey: "revyl-key",
   maxSessions: 2,
   maxSessionMinutes: 30,
+  macs: false,
+  macIdleMinutes: 15,
   androidAppUrl: ANDROID_APP,
   ...overrides,
 });
@@ -59,6 +61,11 @@ const fakeRevyl = Effect.gen(function* () {
   const commands: Array<{ readonly args: ReadonlyArray<string>; readonly env: NodeJS.ProcessEnv }> =
     [];
   const actions = yield* Queue.unbounded<{ readonly action: string; readonly body: unknown }>();
+  const macActions = yield* Queue.unbounded<unknown>();
+  const computers = new Map<
+    string,
+    { computer_id: string; state: string; run_session_id: string; runs: number }
+  >();
   let rotated = false;
   const http = HttpClient.make((request) =>
     Effect.sync(() => {
@@ -83,6 +90,44 @@ const fakeRevyl = Effect.gen(function* () {
           : json({});
       }
       if (request.headers.authorization !== "Bearer revyl-key") return json({}, 401);
+      const body = () =>
+        request.body._tag === "Uint8Array"
+          ? JSON.parse(new TextDecoder().decode(request.body.body))
+          : {};
+      if (url.pathname === "/api/v1/computer-runs/persistent")
+        return json({ computers: [...computers.values()], total: computers.size });
+      if (url.pathname === "/api/v1/computer-runs" && request.method === "POST") {
+        const id = body().computer_session_id as string;
+        computers.set(id, { computer_id: id, state: "running", run_session_id: "run-1", runs: 1 });
+        return json({ computer_session_id: id, state: "starting" });
+      }
+      const computer = /^\/api\/v1\/computer-runs\/([^/]+)(\/.*)?$/.exec(url.pathname);
+      const known = computer ? computers.get(computer[1]!) : undefined;
+      if (computer && known) {
+        switch (computer[2]) {
+          case undefined:
+            return json({
+              state: known.state === "running" ? "active" : "stopped",
+              persistent: known,
+            });
+          case "/stop":
+            known.state = "stopped";
+            return json({ state: "stopped" });
+          case "/start":
+            known.state = "running";
+            known.run_session_id = `run-${++known.runs}`;
+            return json({ computer_id: known.computer_id, state: "starting" });
+          case "/screen/actions":
+            Queue.offerUnsafe(macActions, body());
+            return json({ screenshot: null });
+          case "/screen/screenshot":
+            return json({ width: 1280, height: 800, png: btoa("mac-png") });
+        }
+      }
+      if (/\/execution\/device-sessions\/run-\d+$/.test(url.pathname))
+        return json({ status: "running", whep_url: WHEP, screen_width: 1280, screen_height: 800 });
+      if (url.pathname.endsWith("/streaming/viewer-ice-servers"))
+        return json({ ice_servers: [{ urls: "turn:turn.test" }], refresh_after_seconds: 600 });
       if (url.pathname.endsWith("/worker-connection/" + RUN_ID))
         return json({ status: "ready", whep_url: WHEP, ice_servers: [{ urls: "stun:stun.test" }] });
       if (url.pathname.endsWith("/health"))
@@ -124,7 +169,7 @@ const fakeRevyl = Effect.gen(function* () {
       }).pipe(Effect.orDie),
   });
   const ran = (command: string) => commands.filter(({ args }) => args[0] === command);
-  return { http, runner, requests, ran, actions };
+  return { http, runner, requests, ran, actions, macActions, computers };
 });
 
 const makeSecretResolver = () =>
@@ -520,5 +565,243 @@ describe("Revyl panel touches", () => {
       action: "drag",
       body: { start_x: 540, start_y: 1920, end_x: 540, end_y: 2400 },
     });
+  });
+});
+
+describe("Revyl Macs", () => {
+  const frame = (tag: number, payload: unknown) =>
+    new Uint8Array([tag, ...new TextEncoder().encode(JSON.stringify(payload))]);
+  const key = (usage: number) => [
+    frame(0x06, { type: "down", usage }),
+    frame(0x06, { type: "up", usage }),
+  ];
+  const held = (modifier: number, usage: number) => [
+    frame(0x06, { type: "down", usage: modifier }),
+    ...key(usage),
+    frame(0x06, { type: "up", usage: modifier }),
+  ];
+
+  const openMac = (revyl: Effect.Success<typeof fakeRevyl>, hostConfig = config({ macs: true })) =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const host = yield* makeHost(revyl, hostConfig, scope);
+      const ready = yield* host.ensureReady(() => Effect.void);
+      const catalog = (yield* ready.devices.list).devices.find(
+        (device) => device.id === "revyl:macos",
+      );
+      const deviceId = yield* ready.devices.boot(catalog!);
+      return { scope, ready, deviceId };
+    });
+
+  it.effect(
+    "creates a Mac from the snapshot, streams it, and stops it with its disk on close",
+    () =>
+      Effect.gen(function* () {
+        const revyl = yield* fakeRevyl;
+        const { scope, ready, deviceId } = yield* openMac(
+          revyl,
+          config({ macs: true, macSnapshot: "t3-base" }),
+        );
+
+        const create = revyl.requests.find(
+          (request) => request.method === "POST" && request.url.endsWith("/api/v1/computer-runs"),
+        );
+        expect(JSON.parse(create!.body)).toEqual({
+          computer_session_id: deviceId,
+          os: "macos",
+          persistent: true,
+          from_snapshot: "t3-base",
+        });
+        const listed = (yield* ready.devices.list).devices.filter(
+          (device) => device.platform === "macos",
+        );
+        expect(listed.map(({ id, booted }) => ({ id, booted }))).toEqual([
+          { id: "revyl:macos", booted: false },
+          { id: deviceId, booted: true },
+        ]);
+
+        const settings = yield* ready.serve!(
+          get("/x"),
+          "/vendor/serve-sim/api",
+          new URLSearchParams({ device: deviceId }),
+        );
+        expect(yield* Effect.promise(() => webResponse(settings).json())).toEqual({
+          streamSettings: { transport: "webrtc", iceServers: [{ urls: "turn:turn.test" }] },
+        });
+        const answer = yield* ready.serve!(
+          post("/x", { type: "offer", sdp: "offer-sdp", sessionId: "view-a", codec: "h264" }),
+          `/vendor/serve-sim/helper/${deviceId}/webrtc/offer`,
+          new URLSearchParams(),
+        );
+        expect(yield* Effect.promise(() => webResponse(answer).json())).toEqual({
+          type: "answer",
+          sdp: "answer-sdp",
+        });
+        expect(new TextDecoder().decode(yield* ready.devices.screenshot(listed[1]!))).toBe(
+          "mac-png",
+        );
+
+        yield* ready.devices.shutdown({ id: deviceId, platform: "macos" });
+        expect(revyl.computers.get(deviceId)?.state).toBe("stopped");
+        expect(
+          (yield* ready.devices.list).devices.find((device) => device.id === deviceId)?.booted,
+        ).toBe(false);
+        yield* Scope.close(scope, Exit.void);
+      }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
+  it.effect("starts a stopped Mac again on the stream of its new run", () =>
+    Effect.gen(function* () {
+      const revyl = yield* fakeRevyl;
+      revyl.computers.set("mac-1", {
+        computer_id: "mac-1",
+        state: "stopped",
+        run_session_id: "run-1",
+        runs: 1,
+      });
+      const scope = yield* Scope.make();
+      const host = yield* makeHost(revyl, config({ macs: true }), scope);
+      const ready = yield* host.ensureReady(() => Effect.void);
+      const stopped = (yield* ready.devices.list).devices.find((device) => device.id === "mac-1");
+      expect(stopped).toMatchObject({ platform: "macos", booted: false });
+
+      expect(yield* ready.devices.boot(stopped!)).toBe("mac-1");
+      expect(revyl.computers.get("mac-1")).toMatchObject({
+        state: "running",
+        run_session_id: "run-2",
+      });
+      expect(revyl.requests.map(({ url }) => url)).toContain(
+        "https://backend.revyl.ai/api/v1/execution/device-sessions/run-2",
+      );
+      yield* Scope.close(scope, Exit.void);
+      expect(revyl.computers.get("mac-1")?.state).toBe("stopped");
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
+  it.effect("stops a Mac nobody has opened or typed into for its idle time", () =>
+    Effect.gen(function* () {
+      const revyl = yield* fakeRevyl;
+      const { scope, deviceId } = yield* openMac(revyl, config({ macs: true, macIdleMinutes: 5 }));
+      yield* TestClock.adjust("4 minutes");
+      expect(revyl.computers.get(deviceId)?.state).toBe("running");
+      yield* TestClock.adjust("1 minute");
+      expect(revyl.computers.get(deviceId)?.state).toBe("stopped");
+      yield* Scope.close(scope, Exit.void);
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
+  it.effect("turns panel clicks, drags, typing, and shortcuts into Mac screen actions", () =>
+    Effect.gen(function* () {
+      const revyl = yield* fakeRevyl;
+      const { scope, ready, deviceId } = yield* openMac(revyl);
+      const incoming = yield* Queue.unbounded<Uint8Array>();
+      const outgoing = yield* Queue.unbounded<unknown>();
+      const socket = Socket.make({
+        reader: Effect.succeed({ pull: Queue.takeAll(incoming), upgrade: () => Effect.void }),
+        writer: Effect.succeed({
+          write: (chunk) =>
+            Queue.offer(
+              outgoing,
+              JSON.parse(new TextDecoder().decode((chunk as Uint8Array).subarray(1)) || "null"),
+            ),
+          writeAll: () => Effect.void,
+        }),
+      });
+      const upgraded: HttpServerRequest.HttpServerRequest = Object.create(get("/x"), {
+        upgrade: { value: Effect.succeed(socket) },
+      });
+      yield* ready.serve!(
+        upgraded,
+        "/vendor/serve-sim/helper/ws",
+        new URLSearchParams({ device: deviceId }),
+      ).pipe(Effect.forkChild);
+      expect(yield* Queue.take(outgoing)).toBeNull();
+      expect(yield* Queue.take(outgoing)).toEqual({
+        width: 1280,
+        height: 800,
+        orientation: "landscape_left",
+      });
+
+      yield* Queue.offerAll(incoming, [
+        frame(0x03, { type: "begin", x: 0.5, y: 0.25 }),
+        frame(0x03, { type: "end", x: 0.5, y: 0.25 }),
+        frame(0x03, { type: "begin", x: 0.1, y: 0.1 }),
+        frame(0x03, { type: "end", x: 0.6, y: 0.1 }),
+        ...held(0xe1, 0x0b),
+        ...key(0x0c),
+        ...held(0xe3, 0x06),
+        ...key(0x28),
+      ]);
+      const sent = [];
+      for (let index = 0; index < 4; index++) sent.push(yield* Queue.take(revyl.macActions));
+      const typed = [];
+      let next = yield* Queue.take(revyl.macActions);
+      while ((next as { action: { action: string } }).action.action === "type") {
+        typed.push(next);
+        next = yield* Queue.take(revyl.macActions);
+      }
+      expect(sent.slice(0, 2)).toEqual([
+        { action: { action: "click", x: 640, y: 200 }, screenshot: false },
+        {
+          action: { action: "drag", start_x: 128, start_y: 80, end_x: 768, end_y: 80 },
+          screenshot: false,
+        },
+      ]);
+      expect(
+        [...sent.slice(2), ...typed, next].map(
+          (request) => (request as { action: { text?: string; keys?: string } }).action,
+        ),
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ keys: "cmd+c" }),
+          expect.objectContaining({ keys: "enter" }),
+        ]),
+      );
+      yield* Scope.close(scope, Exit.void);
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+});
+
+describe("Revyl Mac keys", () => {
+  it.each([
+    [0x0b, [], { action: "type", text: "h" }],
+    [0x0b, [0xe1], { action: "type", text: "H" }],
+    [0x06, [0xe3], { action: "key", keys: "cmd+c" }],
+    [0x2e, [0xe3, 0xe1], { action: "key", keys: "cmd+shift+=" }],
+    [0x2c, [0xe0], { action: "key", keys: "ctrl+space" }],
+    [0x2b, [0xe1], { action: "key", keys: "shift+tab" }],
+    [0x50, [], { action: "key", keys: "left" }],
+    [0x3b, [], { action: "key", keys: "f2" }],
+    [0x64, [], null],
+  ] as const)("maps HID usage %s with modifiers %j", (usage, modifiers, expected) => {
+    expect(RevylDeviceHost.macKeyAction(usage, new Set(modifiers))).toEqual(expected);
+  });
+
+  it("clicks on a short touch, right clicks on a long one, and drags a moved one", () => {
+    const screen = { width: 1280, height: 800 };
+    expect(
+      RevylDeviceHost.macTouchAction({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.5 }, 100, screen),
+    ).toEqual({
+      action: "click",
+      x: 640,
+      y: 400,
+    });
+    expect(
+      RevylDeviceHost.macTouchAction({ x: 0.5, y: 0.5 }, { x: 0.5, y: 0.5 }, 900, screen),
+    ).toEqual({
+      action: "click",
+      x: 640,
+      y: 400,
+      button: "right",
+    });
+    expect(RevylDeviceHost.macTouchAction({ x: 0, y: 0 }, { x: 0.5, y: 0.5 }, 100, screen)).toEqual(
+      {
+        action: "drag",
+        start_x: 0,
+        start_y: 0,
+        end_x: 640,
+        end_y: 400,
+      },
+    );
   });
 });

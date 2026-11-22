@@ -36,7 +36,7 @@ const NO_AX_ATOM = Atom.make(AsyncResult.initial<ReadonlyArray<DeviceAxElement>,
 const CONTROLS_RAIL_WIDTH = 56;
 
 function screenAspect(platform: DevicePlatform, screen: DeviceScreenSize | null): number {
-  if (!screen) return platform === "ios" ? 9 / 19.5 : 9 / 20;
+  if (!screen) return platform === "macos" ? 16 / 10 : platform === "ios" ? 9 / 19.5 : 9 / 20;
   const landscape =
     screen.orientation === "landscape_left" || screen.orientation === "landscape_right";
   const w = landscape
@@ -325,7 +325,11 @@ export function DeviceStreamView(props: {
         tabIndex={0}
         role="application"
         aria-label={
-          props.platform === "ios" ? gt("iOS Simulator screen") : gt("Android Emulator screen")
+          props.platform === "macos"
+            ? gt("Mac screen")
+            : props.platform === "ios"
+              ? gt("iOS Simulator screen")
+              : gt("Android Emulator screen")
         }
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
