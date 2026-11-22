@@ -2344,6 +2344,56 @@ describe("locating a device id across hosts", () => {
     ),
   );
 
+  it.effect("finds and closes a session by the catalog id it was opened with", () =>
+    Effect.gen(function* () {
+      const listed = listingHost(thisMachine, []);
+      const ready = (yield* listed.current)!;
+      let devices = [
+        {
+          id: "catalog:ios",
+          name: "New simulator",
+          platform: "ios" as const,
+          version: "test",
+          booted: false,
+          physical: false,
+        },
+      ];
+      const bootsNewDevice: DeviceHost.DeviceHostReady = {
+        ...ready,
+        devices: {
+          ...ready.devices,
+          list: Effect.sync(() => ({ devices, detail: undefined })),
+          boot: () =>
+            Effect.sync(() => {
+              devices = [...devices, { ...devices[0]!, id: "SIM-1", booted: true }];
+              return "SIM-1";
+            }),
+        },
+      };
+      const service = yield* DeviceService.makeWithHosts(
+        new Map([
+          [
+            thisMachine.id,
+            {
+              ...listed,
+              ensureReady: () => Effect.succeed(bootsNewDevice),
+              current: Effect.succeed(bootsNewDevice),
+            },
+          ],
+        ]),
+      ).pipe(Effect.provide(NodeCrypto.layer));
+      yield* service.list;
+      const session = yield* open(service, LOCAL_DEVICE_HOST_ID, "catalog:ios");
+      expect(session).toMatchObject({ deviceId: "SIM-1", openedAs: "catalog:ios" });
+      const deviceId = DeviceId.make("catalog:ios");
+      expect(
+        Option.getOrUndefined(yield* service.locateSession({ threadId, deviceId })),
+      ).toMatchObject({ deviceId: "SIM-1" });
+      yield* service.close({ threadId, deviceId });
+      expect(yield* service.locateSession({ threadId, deviceId })).toEqual(Option.none());
+    }).pipe(Effect.provide(ServerSettings.layerTest({ enableDeviceSupport: true })), Effect.scoped),
+  );
+
   it.effect("finds no session for a device this thread has not opened", () =>
     withTwoHosts((service) =>
       Effect.gen(function* () {

@@ -300,6 +300,7 @@ export const DeviceSession = Schema.Struct({
   threadId: ThreadId,
   hostId: DeviceHostId,
   deviceId: DeviceId,
+  openedAs: Schema.optionalKey(DeviceId),
   platform: DevicePlatform,
   openedAt: Schema.String,
 });

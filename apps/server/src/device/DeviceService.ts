@@ -854,6 +854,7 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
         threadId: input.threadId,
         hostId: host.id,
         deviceId: device.id,
+        ...(device.id === input.deviceId ? {} : { openedAs: input.deviceId }),
         platform: device.platform,
         openedAt,
       };
@@ -918,7 +919,9 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
             (session) =>
               session.threadId === input.threadId &&
               (input.hostId === undefined || session.hostId === input.hostId) &&
-              (input.deviceId === undefined || session.deviceId === input.deviceId),
+              (input.deviceId === undefined ||
+                session.deviceId === input.deviceId ||
+                session.openedAs === input.deviceId),
           );
           const ending = input.shutdown
             ? state.sessions.filter((session) =>
@@ -1101,7 +1104,9 @@ export const makeWithHosts = Effect.fn("DeviceService.makeWithHosts")(function* 
       state,
       input,
       state.sessions.filter(
-        (session) => session.threadId === input.threadId && session.deviceId === input.deviceId,
+        (session) =>
+          session.threadId === input.threadId &&
+          (session.deviceId === input.deviceId || session.openedAs === input.deviceId),
       ),
     );
   });
