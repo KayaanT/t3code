@@ -8,7 +8,8 @@ import { SettingsSecretValue } from "./settingsSecretValue.ts";
 export const DevicePlatform = Schema.Literals(["ios", "android", "macos"]);
 export type DevicePlatform = typeof DevicePlatform.Type;
 /** Phones and tablets, which agent-device drives; Macs are watched and driven through their screen. */
-export type MobileDevicePlatform = Exclude<DevicePlatform, "macos">;
+export const MobileDevicePlatform = Schema.Literals(["ios", "android"]);
+export type MobileDevicePlatform = typeof MobileDevicePlatform.Type;
 
 export const DeviceHostId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 export type DeviceHostId = typeof DeviceHostId.Type;
@@ -713,7 +714,7 @@ export const DeviceToolOpenInput = Schema.Struct({
     }),
   ),
   platform: Schema.optional(
-    DevicePlatform.annotate({
+    MobileDevicePlatform.annotate({
       description: "Needed with no `deviceId` when both platforms exist.",
     }),
   ),
