@@ -12530,5 +12530,11 @@
   "e978bb4807d95fff": "Hôtes d’appareils Revyl (alpha)",
   "f65d338f279052bd": "bêta alpha revyl cloud simulateur émulateur ios android session",
   "ec570678c2d46704": "appareil hôtes ssh distant mac mini identité clé connexion eas expo cloud simlock revyl pool passerelle simulateurs locaux",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Mac Revyl",
+  "8b1a33f5541e6687": "Écran du Mac",
+  "574c221a6f9a3a82": "Proposer des Mac Revyl persistants",
+  "e3d1a5914cf23c08": "Instantané du Mac",
+  "67a5d0ad9ce29e74": "Mac vierge",
+  "5f625a0892bec5cd": "Un Mac conserve son disque lorsqu'il s'arrête. Il s'arrête quand son appareil est fermé, ou après les minutes d'inactivité sans que personne ne l'ouvre ni n'y tape, et redémarre à l'ouverture."
 }

@@ -12531,5 +12531,11 @@
   "e978bb4807d95fff": "Revyl-Gerätehosts (Alpha)",
   "f65d338f279052bd": "beta alpha revyl cloud simulator emulator ios android sitzung",
   "ec570678c2d46704": "gerät hosts ssh remote mac mini identität schlüssel verbindung eas expo cloud simlock revyl pool gateway lokale simulatoren",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Revyl-Macs",
+  "8b1a33f5541e6687": "Mac-Bildschirm",
+  "574c221a6f9a3a82": "Persistente Revyl-Macs anbieten",
+  "e3d1a5914cf23c08": "Mac-Snapshot",
+  "67a5d0ad9ce29e74": "Sauberer Mac",
+  "5f625a0892bec5cd": "Ein Mac behält seine Festplatte, wenn er stoppt. Er stoppt, wenn sein Gerät geschlossen wird oder nach den Leerlaufminuten, in denen niemand ihn öffnet oder darauf tippt, und startet beim Öffnen erneut."
 }

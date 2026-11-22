@@ -12530,5 +12530,11 @@
   "e978bb4807d95fff": "Hosts de dispositivos Revyl (alfa)",
   "f65d338f279052bd": "beta alfa revyl nuvem simulador emulador ios android sessão",
   "ec570678c2d46704": "dispositivo hosts ssh remoto mac mini identidade chave conexão eas expo nuvem simlock revyl pool gateway simuladores locais",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Macs da Revyl",
+  "8b1a33f5541e6687": "Tela do Mac",
+  "574c221a6f9a3a82": "Oferecer Macs persistentes da Revyl",
+  "e3d1a5914cf23c08": "Snapshot do Mac",
+  "67a5d0ad9ce29e74": "Mac limpo",
+  "5f625a0892bec5cd": "Um Mac mantém o disco quando para. Ele para quando o dispositivo é fechado, ou após os minutos ociosos sem ninguém abri-lo ou digitar nele, e inicia novamente ao ser aberto."
 }

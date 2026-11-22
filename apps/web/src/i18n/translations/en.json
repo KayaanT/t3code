@@ -12539,5 +12539,11 @@
   "e978bb4807d95fff": "Revyl device hosts (alpha)",
   "f65d338f279052bd": "beta alpha revyl cloud simulator emulator ios android session",
   "ec570678c2d46704": "device hosts ssh remote mac mini identity key connection eas expo cloud simlock pool gateway revyl local simulators",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Revyl Macs",
+  "8b1a33f5541e6687": "Mac screen",
+  "574c221a6f9a3a82": "Offer persistent Revyl Macs",
+  "e3d1a5914cf23c08": "Mac snapshot",
+  "67a5d0ad9ce29e74": "Clean Mac",
+  "5f625a0892bec5cd": "A Mac keeps its disk when it stops. It stops when its device closes, or after the idle minutes with nobody opening or typing into it, and starts again when opened."
 }

@@ -195,6 +195,26 @@ device cannot reach development servers on your machine through localhost; use
 an address it can reach. To point T3 at another Revyl API, set
 `REVYL_API_URL` to its HTTPS origin on the environment's server.
 
+### Revyl Macs
+
+Turn on **Offer persistent Revyl Macs** for a host to list your organization's
+persistent Revyl Macs under **Revyl Macs**, along with **New Revyl Mac**. Your
+Revyl organization must have persistent Macs enabled. A new Mac starts from
+the host's **Mac snapshot**, by name or id, or from a clean Mac when the field
+is empty.
+
+A Mac keeps its disk when it stops. Opening a stopped Mac starts it again with
+its files and apps as they were, though nothing that was running survives.
+Closing it stops it and saves its disk, and so does leaving it open for the
+host's **Idle minutes** with nobody opening or typing into it. Stopped Macs
+still count toward your organization's limit, so delete those you no longer
+need from Revyl.
+
+The panel shows the Mac's screen. A tap clicks, a long press right-clicks, and
+a drag drags. Typing goes to the focused app, and shortcuts such as Command-C
+are sent as shortcuts. Agents do not drive a Mac through device tools; run T3
+Code on the Mac itself for that.
+
 ## Device tool updates
 
 The connected T3 server manages the device hub and agent tools on its own machine and configured SSH hosts. Required versions install automatically the next time those tools are used. In Settings → Devices, select a version and choose **Check versions** to read installed versions without installing tools or starting devices.

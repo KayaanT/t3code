@@ -12558,5 +12558,11 @@
   "e978bb4807d95fff": "Revyl 设备主机（Alpha）",
   "f65d338f279052bd": "测试版 alpha revyl 云 模拟器 ios android 会话",
   "ec570678c2d46704": "设备 主机 ssh 远程 mac mini 身份 密钥 连接 eas expo 云 simlock revyl 池 网关 本地 模拟器",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Revyl Mac",
+  "8b1a33f5541e6687": "Mac 屏幕",
+  "574c221a6f9a3a82": "提供持久 Revyl Mac",
+  "e3d1a5914cf23c08": "Mac 快照",
+  "67a5d0ad9ce29e74": "全新 Mac",
+  "5f625a0892bec5cd": "Mac 停止时会保留其磁盘。关闭其设备时，或在空闲分钟内无人打开或输入时，它会停止，再次打开时会重新启动。"
 }

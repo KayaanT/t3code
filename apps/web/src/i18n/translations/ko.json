@@ -12474,5 +12474,11 @@
   "e978bb4807d95fff": "Revyl 기기 호스트 (알파)",
   "f65d338f279052bd": "베타 알파 revyl 클라우드 시뮬레이터 에뮬레이터 ios android 세션",
   "ec570678c2d46704": "기기 호스트 ssh 원격 mac mini ID 키 연결 eas expo 클라우드 simlock revyl 풀 게이트웨이 로컬 시뮬레이터",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Revyl Mac",
+  "8b1a33f5541e6687": "Mac 화면",
+  "574c221a6f9a3a82": "영구 Revyl Mac 제공",
+  "e3d1a5914cf23c08": "Mac 스냅샷",
+  "67a5d0ad9ce29e74": "깨끗한 Mac",
+  "5f625a0892bec5cd": "Mac은 중지되어도 디스크를 유지합니다. 기기를 닫거나 유휴 시간 동안 아무도 열거나 입력하지 않으면 중지되며, 열면 다시 시작됩니다."
 }

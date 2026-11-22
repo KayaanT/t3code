@@ -12525,5 +12525,11 @@
   "e978bb4807d95fff": "Hosts de dispositivos Revyl (alfa)",
   "f65d338f279052bd": "beta alfa revyl nube simulador emulador ios android sesión",
   "ec570678c2d46704": "hosts de dispositivos ssh remoto mac mini identidad clave conexión eas expo nube simlock revyl grupo gateway simuladores locales",
-  "fa2154830fd6bdec": "Revyl"
+  "fa2154830fd6bdec": "Revyl",
+  "a0308edc10de9f2c": "Macs de Revyl",
+  "8b1a33f5541e6687": "Pantalla del Mac",
+  "574c221a6f9a3a82": "Ofrecer Macs persistentes de Revyl",
+  "e3d1a5914cf23c08": "Snapshot del Mac",
+  "67a5d0ad9ce29e74": "Mac limpio",
+  "5f625a0892bec5cd": "Un Mac conserva su disco cuando se detiene. Se detiene cuando se cierra su dispositivo, o tras los minutos de inactividad sin que nadie lo abra ni escriba en él, y vuelve a iniciarse al abrirlo."
 }
