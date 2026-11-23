@@ -680,6 +680,39 @@ describe("Revyl Macs", () => {
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 
+  it.effect("lists a Mac another client is running as running, and opens it without a start", () =>
+    Effect.gen(function* () {
+      const revyl = yield* fakeRevyl;
+      revyl.computers.set("mac-busy", {
+        computer_id: "mac-busy",
+        state: "running",
+        run_session_id: "run-1",
+        runs: 1,
+      });
+      revyl.computers.set("mac-idle", {
+        computer_id: "mac-idle",
+        state: "stopped",
+        run_session_id: "run-1",
+        runs: 1,
+      });
+      const scope = yield* Scope.make();
+      const host = yield* makeHost(revyl, config({ macs: true }), scope);
+      const ready = yield* host.ensureReady(() => Effect.void);
+      const listed = (yield* ready.devices.list).devices.filter(
+        (device) => device.platform === "macos" && device.id !== "revyl:macos",
+      );
+      expect(listed.map(({ id, booted }) => ({ id, booted }))).toEqual([
+        { id: "mac-busy", booted: true },
+        { id: "mac-idle", booted: false },
+      ]);
+
+      expect(yield* ready.devices.boot(listed[0]!)).toBe("mac-busy");
+      expect(revyl.requests.some(({ url }) => url.endsWith("/mac-busy/start"))).toBe(false);
+      expect(revyl.computers.get("mac-busy")?.run_session_id).toBe("run-1");
+      yield* Scope.close(scope, Exit.void);
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
   it.effect("stops a Mac nobody has opened or typed into for its idle time", () =>
     Effect.gen(function* () {
       const revyl = yield* fakeRevyl;

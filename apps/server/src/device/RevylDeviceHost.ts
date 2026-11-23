@@ -518,6 +518,8 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
     apiKey: string,
     computerId: string,
   ) {
+    const before = yield* readComputer(apiKey, computerId).pipe(Effect.orElseSucceed(() => null));
+    if (before?.state === "starting" || before?.state === "running") return;
     for (let attempt = 1; ; attempt++) {
       const answer = yield* http
         .execute(
@@ -935,7 +937,10 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
                   platform: "macos",
                   name: `Revyl Mac ${computer.computer_id.slice(0, 8)}`,
                   version: "macOS",
-                  booted: macs.has(computer.computer_id),
+                  booted:
+                    macs.has(computer.computer_id) ||
+                    computer.state === "starting" ||
+                    computer.state === "running",
                   physical: false,
                 })),
               ]),
