@@ -517,6 +517,23 @@ describe("shared device stream readiness and recovery", () => {
     client.stop();
   });
 
+  it("stops retrying a device the hub no longer has open and says to open it again", async () => {
+    const { client, events, fetch } = recoveryFixture("ios", false, true);
+    fetch.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.includes("stream.avcc") ? new Response(null, { status: 404 }) : new Response("prime"),
+      ),
+    );
+    client.start();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetch.mock.calls.filter(([url]) => url.includes("stream.avcc"))).toHaveLength(3);
+    expect(events.onStatus).toHaveBeenLastCalledWith(
+      "error",
+      expect.stringContaining("no longer open"),
+    );
+    client.stop();
+  });
+
   it("does not repaint a delayed JPEG seed over newer decoded video", async () => {
     const { client, videoBodies, drawImage, decodedFrame } = recoveryFixture("ios", false);
     let resolveBitmap!: (bitmap: ImageBitmap) => void;

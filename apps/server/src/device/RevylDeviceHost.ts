@@ -940,7 +940,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
                 ...listedMacs.map((computer): DeviceHost.HostDevice => ({
                   id: computer.computer_id,
                   platform: "macos",
-                  name: `Revyl Mac ${computer.computer_id.slice(0, 8)}`,
+                  name: `Revyl Mac ${computer.computer_id}`,
                   version: "macOS",
                   booted:
                     macs.has(computer.computer_id) ||

@@ -134,6 +134,7 @@ export type DeviceHardwareButton = "home" | "back" | "recents" | "power" | "appS
 
 const RETRY_DELAY_MS = 1_000;
 const FIRST_FRAME_TIMEOUT_MS = 15_000;
+const NOT_FOUND_LIMIT = 3;
 // A WebRTC feed that shows no frame for this long is reconnected; checked
 // every WEBRTC_STALL_CHECK_MS, so a transient `disconnected` peer that
 // recovers is left alone.
@@ -502,6 +503,15 @@ export function createDeviceStreamClient(
     frameTimer = null;
   };
 
+  /** Consecutive 404s from the hub: the device is not open there, as after a server restart. */
+  let notFoundCount = 0;
+  const deviceNotOpen = (status: number) => {
+    notFoundCount = status === 404 ? notFoundCount + 1 : 0;
+    if (notFoundCount < NOT_FOUND_LIMIT) return false;
+    fail(resolve(msg("This device is no longer open. Open it again from the device list.")));
+    return true;
+  };
+
   const fail = (detail: string) => {
     if (stopped) return;
     stop();
@@ -752,6 +762,10 @@ export function createDeviceStreamClient(
           );
           return;
         }
+      }
+      if (!target.panelId && deviceNotOpen(response.status)) {
+        await response.body?.cancel();
+        return;
       }
       if (target.panelId && [400, 404, 405, 410].includes(response.status)) {
         await response.body?.cancel();
@@ -1059,6 +1073,7 @@ export function createDeviceStreamClient(
         return;
       }
       if (response.status === 401 || response.status === 403) return handleUnauthorized();
+      if (deviceNotOpen(response.status)) return;
       // 409: another viewer is still negotiating with this simulator.
       if (!response.ok)
         return retry(
