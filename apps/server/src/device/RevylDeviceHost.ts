@@ -403,6 +403,8 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
   const agentHome = path.join(hostDir, "home");
   const leases = new Map<string, Lease>();
   const macs = new Map<string, Mac>();
+  /** Macs this server created or started; only these are stopped when T3 lets go of them. */
+  const macsStartedHere = new Set<string>();
   let starting = 0;
   // Bumped by every stop, so an open that finishes after one ends its session instead of keeping it.
   let stops = 0;
@@ -512,14 +514,15 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
 
   /**
    * Starts a stopped Mac. Revyl refuses a start while the last run is still ending, so that
-   * conflict is retried; a Mac that is already starting or running needs no start.
+   * conflict is retried; a Mac that is already starting or running needs no start. Returns
+   * whether this call started it.
    */
   const startMac = Effect.fn("RevylDeviceHost.startMac")(function* (
     apiKey: string,
     computerId: string,
   ) {
     const before = yield* readComputer(apiKey, computerId).pipe(Effect.orElseSucceed(() => null));
-    if (before?.state === "starting" || before?.state === "running") return;
+    if (before?.state === "starting" || before?.state === "running") return false;
     for (let attempt = 1; ; attempt++) {
       const answer = yield* http
         .execute(
@@ -534,7 +537,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
           Effect.scoped,
           Effect.timeout(REQUEST_TIMEOUT),
         );
-      if (answer.status < 300) return;
+      if (answer.status < 300) return true;
       const detail = Option.match(decodeApiError(answer.text), {
         onNone: () => `status ${answer.status}`,
         onSome: (error) => error.detail,
@@ -542,7 +545,7 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
       const current = yield* readComputer(apiKey, computerId).pipe(
         Effect.orElseSucceed(() => null),
       );
-      if (current?.state === "starting" || current?.state === "running") return;
+      if (current?.state === "starting" || current?.state === "running") return false;
       if (detail !== "run_conflict" || attempt >= MAC_START_ATTEMPTS)
         return yield* unavailable(
           detail === "saved_disk_expired"
@@ -627,7 +630,9 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
   const releaseMac = (mac: Mac) =>
     Effect.suspend(() => {
       macs.delete(mac.computerId);
-      return stopMac(mac.apiKey, mac.computerId);
+      return macsStartedHere.delete(mac.computerId)
+        ? stopMac(mac.apiKey, mac.computerId)
+        : Effect.void;
     });
 
   const macIdleKey = (computerId: string) => `mac:${computerId}`;
@@ -637,15 +642,15 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
       const apiKey = yield* currentApiKey;
       const stopsAtOpen = stops;
       const computerId = device.id === MAC_CATALOG_ID ? yield* createMac(apiKey) : device.id;
-      if (device.id !== MAC_CATALOG_ID) yield* startMac(apiKey, computerId);
-      const mac = yield* attachMac(apiKey, computerId).pipe(
-        Effect.tapError(() => stopMac(apiKey, computerId)),
-      );
+      const started = device.id === MAC_CATALOG_ID || (yield* startMac(apiKey, computerId));
+      const stopIfStarted = started ? stopMac(apiKey, computerId) : Effect.void;
+      const mac = yield* attachMac(apiKey, computerId).pipe(Effect.tapError(() => stopIfStarted));
       if (stops !== stopsAtOpen) {
-        yield* stopMac(apiKey, computerId);
+        yield* stopIfStarted;
         return yield* unavailable("Device support stopped while the Mac was opening.");
       }
       macs.set(computerId, mac);
+      if (started) macsStartedHere.add(computerId);
       const idleMs = config.macIdleMinutes * 60_000;
       yield* FiberMap.run(
         maxAge,
