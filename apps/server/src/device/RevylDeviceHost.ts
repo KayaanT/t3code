@@ -523,7 +523,6 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
         .execute(
           HttpClientRequest.post(`${apiOrigin}${computerRoute(computerId, "/start")}`).pipe(
             HttpClientRequest.bearerToken(apiKey),
-            HttpClientRequest.bodyJsonUnsafe({}),
           ),
         )
         .pipe(
@@ -614,7 +613,8 @@ export const make = Effect.fn("RevylDeviceHost.make")(function* (
 
   /** Stops a Mac, which saves its disk; a stop that fails leaves the run to its lifetime limit. */
   const stopMac = (apiKey: string, computerId: string) =>
-    revylJson(apiKey, "POST", computerRoute(computerId, "/stop")).pipe(
+    revyl(apiKey, HttpClientRequest.post(`${apiOrigin}${computerRoute(computerId, "/stop")}`)).pipe(
+      Effect.scoped,
       Effect.andThen(Effect.logInfo("Stopped a Revyl Mac", { computerId })),
       Effect.tapError((cause) =>
         Effect.logWarning("Could not stop a Revyl Mac", { computerId, cause }),

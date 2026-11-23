@@ -104,6 +104,8 @@ const fakeRevyl = Effect.gen(function* () {
       const computer = /^\/api\/v1\/computer-runs\/([^/]+)(\/.*)?$/.exec(url.pathname);
       const known = computer ? computers.get(computer[1]!) : undefined;
       if (computer && known) {
+        if ((computer[2] === "/stop" || computer[2] === "/start") && request.body._tag !== "Empty")
+          return json({ detail: "invalid_request" }, 422);
         switch (computer[2]) {
           case undefined:
             return json({
